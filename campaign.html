@@ -158,13 +158,13 @@
             transform: translate(-50%, -50%);
             background: rgba(0,0,0,0.8);
             color: gold;
-            font-size: 2rem;
-            padding: 30px 40px;
-            border-radius: 60px;
+            font-size: 1.4rem;
+            padding: 15px 20px;
+            border-radius: 30px;
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 20px;
+            gap: 10px;
             z-index: 1000;
             opacity: 0;
             transition: opacity 0.3s ease;
@@ -172,13 +172,15 @@
             box-shadow: 0 10px 30px rgba(0,0,0,0.5);
             border: 2px solid gold;
             max-width: 80%;
+            width: auto;
             text-align: center;
+            word-wrap: break-word;
         }
         .toast.show {
             opacity: 1;
         }
         .toast-star {
-            font-size: 4rem;
+            font-size: 2.5rem;
             animation: twinkle 0.5s infinite alternate;
         }
         @keyframes twinkle {
@@ -221,10 +223,9 @@
             toast.classList.add('show');
             setTimeout(() => {
                 toast.classList.remove('show');
-            }, 5000); // 5 секунд
+            }, 5000);
         }
 
-        // Генерация пузырьков фона
         (function createBubbles() {
             const container = document.getElementById('bubbles-container');
             for (let i = 0; i < 15; i++) {
@@ -242,7 +243,6 @@
 
         const appDiv = document.getElementById('app');
 
-        // Проверка авторизации
         auth.onAuthStateChanged(async (user) => {
             if (!user) {
                 window.location.href = 'index.html';
@@ -274,7 +274,7 @@
         });
 
         function renderLevels(progress) {
-            const totalLevels = 10; // можно увеличить
+            const totalLevels = 10;
             const levelsHtml = [];
 
             for (let i = 1; i <= totalLevels; i++) {
@@ -298,7 +298,6 @@
                 `);
             }
 
-            // Проверяем, выполнены ли все 10 уровней на 5 звёзд
             const allFiveStars = (() => {
                 for (let i = 1; i <= totalLevels; i++) {
                     if ((progress[i] || 0) < 5) return false;
@@ -306,7 +305,6 @@
                 return true;
             })();
 
-            // Добавляем секретный уровень
             const secretButtonClass = allFiveStars ? 'btn-secret' : 'btn-secret disabled';
             levelsHtml.push(`
                 <div class="level-item">
@@ -333,12 +331,10 @@
             });
         }
 
-        // Глобальная функция для обычных уровней
         window.playLevel = (level) => {
             window.location.href = `game.html?mode=campaign&level=${level}`;
         };
 
-        // Глобальная функция для секретного уровня
         window.showSecretMessage = () => {
             showToast('Спасибо за прохождение тестовой кампании! Если мне не будет лень, то кампания будет дополняться новыми уровнями с новыми механиками. Но пока что это всё, что есть. Если хотите, можете поиграть в бесконечный режим и посоревноваться с другими игроками. С уважением, Никита ✨');
         };
