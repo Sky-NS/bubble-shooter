@@ -43,66 +43,137 @@
             border-radius: 50px;
             border: 2px solid rgba(255, 255, 255, 0.5);
             box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3), inset 0 0 20px rgba(255, 255, 255, 0.5);
-            padding: 40px 30px;
+            padding: 20px 20px;
             width: 100%;
             max-width: 500px;
             color: #2c3e50;
             text-shadow: 2px 2px 4px rgba(255, 255, 255, 0.5);
-            text-align: center;
         }
-        h1 {
-            font-size: 3rem;
-            margin-bottom: 30px;
-            background: linear-gradient(45deg, #f093fb, #f5576c);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-        .message {
-            font-size: 2rem;
-            margin: 40px 0;
+        .game-header {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 60px;
+            padding: 15px 20px;
+            margin-bottom: 15px;
+            font-weight: bold;
             color: #2c3e50;
+        }
+        .header-score {
+            font-size: 2.2rem;
+            color: #f39c12;
+        }
+        .header-record {
+            font-size: 1.5rem;
+            color: #3498db;
+        }
+        .queue-container {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin: 15px 0;
+        }
+        .ball-item {
+            width: 55px;
+            height: 55px;
+            border-radius: 50%;
+            border: 4px solid #555;
+            background: #ccc;
+            transition: border 0.2s;
+            background-size: cover;
+            background-position: center;
+        }
+        .ball-item.current {
+            border-color: #f1c40f;
+            transform: scale(1.1);
+        }
+        canvas {
+            background: transparent;
+            border-radius: 30px;
+            display: block;
+            width: 100%;
+            height: auto;
+            border: 3px solid rgba(255,255,255,0.3);
+            touch-action: none;
         }
         .btn {
             display: inline-block;
             width: 100%;
-            padding: 15px 20px;
-            font-size: 1.8rem;
+            padding: 12px 20px;
+            font-size: 1.3rem;
             font-weight: bold;
             border: none;
             border-radius: 60px;
             background: linear-gradient(145deg, #f1c40f, #e67e22);
             color: white;
             text-shadow: 2px 2px 0 #b45d1a;
-            box-shadow: 0 10px 0 #b45d1a;
+            box-shadow: 0 8px 0 #b45d1a;
             cursor: pointer;
             transition: 0.1s;
-            margin-top: 20px;
-            text-decoration: none;
+            margin-top: 15px;
         }
         .btn:active {
-            transform: translateY(10px);
+            transform: translateY(8px);
             box-shadow: none;
         }
         .btn.secondary {
             background: linear-gradient(145deg, #34495e, #2c3e50);
-            box-shadow: 0 10px 0 #1a252f;
+            box-shadow: 0 8px 0 #1a252f;
             text-shadow: 2px 2px 0 #1a252f;
         }
         .loading {
+            text-align: center;
             font-size: 1.5rem;
             color: white;
             padding: 40px;
+        }
+        .toast {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.8);
+            color: gold;
+            font-size: 2.5rem;
+            padding: 20px 40px;
+            border-radius: 60px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border: 2px solid gold;
+        }
+        .toast.show {
+            opacity: 1;
+        }
+        .toast-star {
+            font-size: 4rem;
+            animation: twinkle 0.5s infinite alternate;
+        }
+        @keyframes twinkle {
+            from { transform: scale(1); text-shadow: 0 0 10px gold; }
+            to { transform: scale(1.2); text-shadow: 0 0 20px orange; }
         }
     </style>
 </head>
 <body>
     <div id="bubbles-container"></div>
     <div class="glass-panel" id="app">
-        <div class="loading">Загрузка...</div>
+        <div class="loading">Загрузка бесконечного режима...</div>
+    </div>
+    <div id="toast" class="toast">
+        <span class="toast-star">⭐</span>
+        <span id="toastText">+1 звезда</span>
     </div>
 
     <script>
-        // Firebase конфигурация (такая же, как в других файлах)
+        // Firebase конфигурация
         const firebaseConfig = {
             apiKey: "AIzaSyAb0WLf9uyTXhs6eGw19i_42gUIZZCbP9c",
             authDomain: "bubble-shooter-game-6169e.firebaseapp.com",
@@ -114,8 +185,99 @@
 
         firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth();
+        const db = firebase.firestore();
 
-        // Генерация пузырьков фона
+        let currentUser = null;
+
+        // Глобальные переменные игры
+        let gameActive = false;
+        let gameCanvas, ctx;
+        let gameInterval;
+
+        // Настройки сетки (staggered)
+        const COLS = 9;
+        const ROWS = 12;
+        const BALL_RADIUS = 18;
+        const CELL_W = BALL_RADIUS * 2;
+        const CELL_H = BALL_RADIUS * 1.8;
+        const X_OFFSET = BALL_RADIUS;
+        // Соответствие цветов и имён файлов (без расширения)
+        const COLOR_NAMES = {
+            '#e67e22': 'orange',
+            '#3498db': 'blue',
+            '#2ecc71': 'green',
+            '#e74c3c': 'red',
+            '#9b59b6': 'purple'
+        };
+        const COLORS = Object.keys(COLOR_NAMES);
+
+        // Загруженные изображения
+        const ballImages = {};
+
+        // Загружаем изображения для всех цветов
+        function loadImages() {
+            return new Promise((resolve) => {
+                let loadedCount = 0;
+                const total = COLORS.length;
+                COLORS.forEach(color => {
+                    const img = new Image();
+                    const fileName = COLOR_NAMES[color] + '.png';
+                    img.src = 'images/' + fileName; // путь относительно game.html
+                    img.onload = () => {
+                        ballImages[color] = img;
+                        loadedCount++;
+                        if (loadedCount === total) resolve();
+                    };
+                    img.onerror = () => {
+                        console.warn('Не удалось загрузить изображение:', fileName);
+                        loadedCount++;
+                        if (loadedCount === total) resolve();
+                    };
+                });
+            });
+        }
+
+        const SHOTS_PER_NEW_ROW = 5;
+        const MAX_TRAJECTORY_LENGTH = 300;
+
+        let grid = [];
+        let startOffset = 0;
+        let shotsFired = 0;
+        let ballQueue = [];
+        let shooting = false;
+        let ball = { active: false };
+
+        // Анимированные умирающие шары
+        let dyingBalls = [];
+
+        let aiming = false;
+        let aimX = 0, aimY = 0;
+
+        let gameScore = 0;
+        let gameCombo = 0;
+        let currentRecord = 0; // рекорд текущего пользователя
+
+        const toast = document.getElementById('toast');
+        const toastText = document.getElementById('toastText');
+
+        function showToast(message) {
+            toastText.innerText = message;
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 1500);
+        }
+
+        function updateScoreDisplay() {
+            const scoreEl = document.getElementById('scoreDisplay');
+            if (scoreEl) scoreEl.innerText = gameScore;
+        }
+
+        function updateRecordDisplay() {
+            const recordEl = document.getElementById('recordDisplay');
+            if (recordEl) recordEl.innerText = currentRecord;
+        }
+
         (function createBubbles() {
             const container = document.getElementById('bubbles-container');
             for (let i = 0; i < 15; i++) {
@@ -131,29 +293,606 @@
             }
         })();
 
-        const appDiv = document.getElementById('app');
-
-        // Проверка авторизации
         auth.onAuthStateChanged(async (user) => {
             if (!user) {
                 window.location.href = 'index.html';
                 return;
             }
+            const userRef = db.collection('users').doc(user.uid);
+            const doc = await userRef.get();
+            if (!doc.exists) {
+                window.location.href = 'index.html';
+                return;
+            }
+            currentUser = { id: user.uid, ...doc.data() };
+            // Убедимся, что есть поле endlessHighScore
+            if (currentUser.endlessHighScore === undefined) {
+                currentUser.endlessHighScore = 0;
+                await userRef.update({ endlessHighScore: 0 });
+            }
+            currentRecord = currentUser.endlessHighScore || 0;
+            await loadImages();
+            initGame();
+        });
 
-            // Пользователь авторизован, показываем заглушку
+        function initGame() {
+            const appDiv = document.getElementById('app');
             appDiv.innerHTML = `
-                <h1>♾️ Бесконечный режим</h1>
-                <div class="message">
-                    🚧 В разработке<br>
-                    Скоро здесь появится бесконечная игра с рекордами!
+                <div class="game-header">
+                    <div class="header-score" id="scoreDisplay">0</div>
+                    <div class="header-record">🏆 Рекорд: <span id="recordDisplay">${currentRecord}</span></div>
                 </div>
-                <button class="btn secondary" id="backBtn">← Назад в меню</button>
+                <canvas id="gameCanvas" width="360" height="440"></canvas>
+                <div class="queue-container" id="queueContainer"></div>
+                <button class="btn secondary" id="exitBtn">Выйти в меню</button>
             `;
 
-            document.getElementById('backBtn').addEventListener('click', () => {
+            gameCanvas = document.getElementById('gameCanvas');
+            ctx = gameCanvas.getContext('2d');
+
+            initGrid();
+            initQueue();
+            updateQueueDisplay();
+            updateScoreDisplay();
+
+            gameActive = true;
+            gameInterval = setInterval(updateGame, 1000 / 60);
+
+            setupControls();
+
+            document.getElementById('exitBtn').addEventListener('click', () => {
+                stopGame();
                 window.location.href = 'index.html';
             });
-        });
+        }
+
+        function initGrid() {
+            grid = [];
+            for (let r = 0; r < ROWS; r++) {
+                grid[r] = Array(COLS).fill(null);
+            }
+            for (let r = 0; r < 3; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    grid[r][c] = COLORS[Math.floor(Math.random() * COLORS.length)];
+                }
+            }
+            startOffset = 0;
+            shotsFired = 0;
+            gameScore = 0;
+            gameCombo = 0;
+            dyingBalls = [];
+        }
+
+        function initQueue() {
+            ballQueue = [];
+            for (let i = 0; i < 3; i++) {
+                ballQueue.push(COLORS[Math.floor(Math.random() * COLORS.length)]);
+            }
+        }
+
+        function updateQueueDisplay() {
+            const container = document.getElementById('queueContainer');
+            if (!container) return;
+            container.innerHTML = ballQueue.map((color, index) => {
+                const img = ballImages[color];
+                const bgStyle = img ? `url(${img.src})` : color;
+                return `
+                    <div class="ball-item ${index === 0 ? 'current' : ''}" style="background: ${bgStyle}; background-size: cover; background-position: center;"></div>
+                `;
+            }).join('');
+        }
+
+        function shiftQueue() {
+            ballQueue.shift();
+            ballQueue.push(COLORS[Math.floor(Math.random() * COLORS.length)]);
+            updateQueueDisplay();
+        }
+
+        function getBallXY(row, col) {
+            const offset = (row + startOffset) % 2;
+            const x = col * CELL_W + offset * X_OFFSET + BALL_RADIUS;
+            const y = row * CELL_H + BALL_RADIUS + 15;
+            return { x, y };
+        }
+
+        function findNearestFreeCell(x, y) {
+            let minDist = Infinity;
+            let best = null;
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    if (grid[r][c] !== null) continue;
+                    const { x: cx, y: cy } = getBallXY(r, c);
+                    const d = Math.hypot(x - cx, y - cy);
+                    if (d < minDist) {
+                        minDist = d;
+                        best = { row: r, col: c };
+                    }
+                }
+            }
+            return best;
+        }
+
+        function predictTrajectory(startX, startY, vx, vy) {
+            let points = [];
+            let x = startX, y = startY;
+            let dx = vx, dy = vy;
+            let traveled = 0;
+            let maxIter = 100;
+
+            while (traveled < MAX_TRAJECTORY_LENGTH && maxIter-- > 0) {
+                let tLeft = dx < 0 ? (BALL_RADIUS - x) / dx : Infinity;
+                let tRight = dx > 0 ? (gameCanvas.width - BALL_RADIUS - x) / dx : Infinity;
+                let tTop = dy < 0 ? (BALL_RADIUS - y) / dy : Infinity;
+
+                let tWall = Math.min(tLeft, tRight, tTop);
+                if (tWall === Infinity) break;
+
+                let newX = x + dx * tWall;
+                let newY = y + dy * tWall;
+                let segmentLength = Math.hypot(newX - x, newY - y);
+
+                if (traveled + segmentLength > MAX_TRAJECTORY_LENGTH) {
+                    let fraction = (MAX_TRAJECTORY_LENGTH - traveled) / segmentLength;
+                    newX = x + dx * tWall * fraction;
+                    newY = y + dy * tWall * fraction;
+                    points.push({ x: newX, y: newY });
+                    break;
+                }
+
+                points.push({ x: newX, y: newY });
+                traveled += segmentLength;
+
+                if (tWall === tLeft || tWall === tRight) dx = -dx;
+                else if (tWall === tTop) dy = -dy;
+
+                x = newX;
+                y = newY;
+            }
+            return points;
+        }
+
+        function checkCollision(ballX, ballY, vx, vy) {
+            if (ballX - BALL_RADIUS < 0) return { type: 'wall', side: 'left', newVx: Math.abs(vx) };
+            if (ballX + BALL_RADIUS > gameCanvas.width) return { type: 'wall', side: 'right', newVx: -Math.abs(vx) };
+            if (ballY - BALL_RADIUS < 0) return { type: 'ceiling', x: ballX, y: ballY };
+
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    if (grid[r][c] === null) continue;
+                    const { x: cx, y: cy } = getBallXY(r, c);
+                    const dist = Math.hypot(ballX - cx, ballY - cy);
+                    if (dist < 2 * BALL_RADIUS - 2) {
+                        return { type: 'ball', row: r, col: c, x: cx, y: cy };
+                    }
+                }
+            }
+            return null;
+        }
+
+        function findCluster(row, col, color) {
+            if (!grid[row]?.[col] || grid[row][col] !== color) return [];
+            const visited = Array(ROWS).fill().map(() => Array(COLS).fill(false));
+            const queue = [[row, col]];
+            const cluster = [];
+            while (queue.length) {
+                const [r, c] = queue.shift();
+                if (visited[r][c]) continue;
+                visited[r][c] = true;
+                if (grid[r][c] === color) {
+                    cluster.push([r, c]);
+                    const offset = (r + startOffset) % 2;
+                    const neighbors = [
+                        [r-1, c], [r+1, c], [r, c-1], [r, c+1]
+                    ];
+                    if (offset === 0) {
+                        if (r > 0) {
+                            neighbors.push([r-1, c-1]);
+                            neighbors.push([r-1, c]);
+                        }
+                        if (r < ROWS-1) {
+                            neighbors.push([r+1, c-1]);
+                            neighbors.push([r+1, c]);
+                        }
+                    } else {
+                        if (r > 0) {
+                            neighbors.push([r-1, c]);
+                            neighbors.push([r-1, c+1]);
+                        }
+                        if (r < ROWS-1) {
+                            neighbors.push([r+1, c]);
+                            neighbors.push([r+1, c+1]);
+                        }
+                    }
+                    for (let [nr, nc] of neighbors) {
+                        if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS && !visited[nr][nc] && grid[nr][nc] === color) {
+                            queue.push([nr, nc]);
+                        }
+                    }
+                }
+            }
+            return cluster;
+        }
+
+        function removeFloating() {
+            const visited = Array(ROWS).fill().map(() => Array(COLS).fill(false));
+            const queue = [];
+
+            for (let c = 0; c < COLS; c++) {
+                if (grid[0][c] !== null) {
+                    queue.push([0, c]);
+                    visited[0][c] = true;
+                }
+            }
+
+            while (queue.length) {
+                const [r, c] = queue.shift();
+                const offset = (r + startOffset) % 2;
+                const neighbors = [
+                    [r-1, c], [r+1, c], [r, c-1], [r, c+1]
+                ];
+                if (offset === 0) {
+                    if (r > 0) {
+                        neighbors.push([r-1, c-1]);
+                        neighbors.push([r-1, c]);
+                    }
+                    if (r < ROWS-1) {
+                        neighbors.push([r+1, c-1]);
+                        neighbors.push([r+1, c]);
+                    }
+                } else {
+                    if (r > 0) {
+                        neighbors.push([r-1, c]);
+                        neighbors.push([r-1, c+1]);
+                    }
+                    if (r < ROWS-1) {
+                        neighbors.push([r+1, c]);
+                        neighbors.push([r+1, c+1]);
+                    }
+                }
+                for (let [nr, nc] of neighbors) {
+                    if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS && !visited[nr][nc] && grid[nr][nc] !== null) {
+                        visited[nr][nc] = true;
+                        queue.push([nr, nc]);
+                    }
+                }
+            }
+
+            let removed = [];
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    if (grid[r][c] !== null && !visited[r][c]) {
+                        removed.push({ row: r, col: c, color: grid[r][c] });
+                        grid[r][c] = null;
+                    }
+                }
+            }
+            return removed;
+        }
+
+        function addNewRow() {
+            for (let r = ROWS - 1; r > 0; r--) {
+                grid[r] = [...grid[r-1]];
+            }
+            grid[0] = Array(COLS).fill(null).map(() => COLORS[Math.floor(Math.random() * COLORS.length)]);
+            startOffset = 1 - startOffset;
+        }
+
+        function addDyingBalls(balls) {
+            const now = performance.now();
+            balls.forEach(b => {
+                const { row, col, color } = b;
+                const { x, y } = getBallXY(row, col);
+                dyingBalls.push({
+                    x, y,
+                    color,
+                    startTime: now,
+                    duration: 800
+                });
+            });
+        }
+
+        async function processShot(targetRow, targetCol, ballColor) {
+            if (targetRow === null || targetCol === null) return 0;
+
+            grid[targetRow][targetCol] = ballColor;
+
+            let totalDestroyed = 0;
+            let pointsEarned = 0;
+            let destroyedBalls = [];
+
+            const cluster = findCluster(targetRow, targetCol, ballColor);
+            if (cluster.length >= 3) {
+                cluster.forEach(([r, c]) => {
+                    destroyedBalls.push({ row: r, col: c, color: grid[r][c] });
+                    grid[r][c] = null;
+                    totalDestroyed++;
+                    pointsEarned += 10;
+                });
+            }
+
+            const floating = removeFloating();
+            floating.forEach(item => {
+                destroyedBalls.push(item);
+                totalDestroyed++;
+                pointsEarned += 10;
+            });
+
+            if (destroyedBalls.length > 0) {
+                addDyingBalls(destroyedBalls);
+            }
+
+            if (totalDestroyed > 0) {
+                gameCombo++;
+                gameScore += pointsEarned * gameCombo;
+            } else {
+                gameCombo = 0;
+            }
+
+            updateScoreDisplay();
+
+            // Проверка поражения
+            for (let c = 0; c < COLS; c++) {
+                if (grid[ROWS-1][c] !== null) {
+                    // Игра окончена, обновляем рекорд
+                    if (gameScore > currentRecord) {
+                        currentRecord = gameScore;
+                        await db.collection('users').doc(currentUser.id).update({
+                            endlessHighScore: currentRecord
+                        });
+                        updateRecordDisplay();
+                        showToast(`🏆 Новый рекорд: ${currentRecord}!`);
+                    } else {
+                        showToast('Игра окончена');
+                    }
+                    setTimeout(() => {
+                        stopGame();
+                        window.location.href = 'index.html';
+                    }, 1500);
+                    return;
+                }
+            }
+
+            return totalDestroyed;
+        }
+
+        function shoot(dx, dy) {
+            if (shooting || !gameActive) return;
+            const len = Math.hypot(dx, dy);
+            if (len < 0.001) return;
+            const speed = 5;
+            ball = {
+                x: gameCanvas.width / 2,
+                y: gameCanvas.height - 40,
+                vx: (dx / len) * speed,
+                vy: (dy / len) * speed,
+                color: ballQueue[0],
+                active: true
+            };
+            shooting = true;
+            shiftQueue();
+        }
+
+        function updateGame() {
+            if (!gameActive) return;
+
+            const now = performance.now();
+            dyingBalls = dyingBalls.filter(b => now - b.startTime < b.duration);
+
+            if (shooting && ball.active) {
+                ball.x += ball.vx;
+                ball.y += ball.vy;
+
+                const collision = checkCollision(ball.x, ball.y, ball.vx, ball.vy);
+                if (collision) {
+                    if (collision.type === 'wall') {
+                        ball.vx = collision.newVx;
+                    } else if (collision.type === 'ceiling') {
+                        const cell = findNearestFreeCell(ball.x, ball.y);
+                        ball.active = false;
+                        shooting = false;
+                        if (cell) {
+                            processShot(cell.row, cell.col, ball.color);
+                            shotsFired++;
+                            if (shotsFired >= SHOTS_PER_NEW_ROW) {
+                                addNewRow();
+                                shotsFired = 0;
+                            }
+                        }
+                    } else if (collision.type === 'ball') {
+                        const cell = findNearestFreeCell(ball.x, ball.y);
+                        ball.active = false;
+                        shooting = false;
+                        if (cell) {
+                            processShot(cell.row, cell.col, ball.color);
+                            shotsFired++;
+                            if (shotsFired >= SHOTS_PER_NEW_ROW) {
+                                addNewRow();
+                                shotsFired = 0;
+                            }
+                        }
+                    }
+                }
+                if (ball.y - BALL_RADIUS > gameCanvas.height) {
+                    ball.active = false;
+                    shooting = false;
+                }
+            }
+
+            drawGame();
+        }
+
+        function drawGame() {
+            ctx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
+
+            if (aiming && !shooting && gameActive) {
+                const startX = gameCanvas.width / 2;
+                const startY = gameCanvas.height - 40;
+                const dx = aimX - startX;
+                const dy = aimY - startY;
+                const len = Math.hypot(dx, dy);
+                if (len > 0.001) {
+                    const vx = (dx / len) * 5;
+                    const vy = (dy / len) * 5;
+                    const points = predictTrajectory(startX, startY, vx, vy);
+                    if (points.length > 0) {
+                        ctx.beginPath();
+                        ctx.moveTo(startX, startY);
+                        for (let p of points) {
+                            ctx.lineTo(p.x, p.y);
+                        }
+                        ctx.strokeStyle = '#555';
+                        ctx.lineWidth = 2;
+                        ctx.setLineDash([5, 5]);
+                        ctx.stroke();
+                        ctx.setLineDash([]);
+                    }
+                }
+            }
+
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    if (grid[r][c]) {
+                        const { x, y } = getBallXY(r, c);
+                        const img = ballImages[grid[r][c]];
+                        if (img) {
+                            ctx.drawImage(img, x - BALL_RADIUS, y - BALL_RADIUS, BALL_RADIUS*2, BALL_RADIUS*2);
+                        } else {
+                            ctx.beginPath();
+                            ctx.arc(x, y, BALL_RADIUS-1, 0, 2*Math.PI);
+                            ctx.fillStyle = grid[r][c];
+                            ctx.shadowColor = '#fff3';
+                            ctx.shadowBlur = 8;
+                            ctx.fill();
+                            ctx.shadowBlur = 0;
+                            ctx.strokeStyle = '#000';
+                            ctx.lineWidth = 1.5;
+                            ctx.stroke();
+                        }
+                    }
+                }
+            }
+
+            const now = performance.now();
+            dyingBalls.forEach(b => {
+                const elapsed = now - b.startTime;
+                const progress = Math.min(elapsed / b.duration, 1);
+                const radius = BALL_RADIUS * (1 - progress * 0.8);
+                const alpha = 1 - progress;
+                const img = ballImages[b.color];
+                if (img) {
+                    ctx.globalAlpha = alpha;
+                    ctx.drawImage(img, b.x - radius, b.y - radius, radius*2, radius*2);
+                    ctx.globalAlpha = 1.0;
+                } else {
+                    ctx.beginPath();
+                    ctx.arc(b.x, b.y, radius, 0, 2*Math.PI);
+                    ctx.fillStyle = b.color;
+                    ctx.globalAlpha = alpha;
+                    ctx.shadowBlur = 8;
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                    ctx.strokeStyle = '#000';
+                    ctx.lineWidth = 1.5;
+                    ctx.stroke();
+                    ctx.globalAlpha = 1.0;
+                }
+            });
+
+            const cannonX = gameCanvas.width / 2;
+            const cannonY = gameCanvas.height - 40;
+            ctx.fillStyle = '#456';
+            ctx.beginPath();
+            ctx.moveTo(cannonX - 18, cannonY - 10);
+            ctx.lineTo(cannonX + 18, cannonY - 10);
+            ctx.lineTo(cannonX, cannonY + 10);
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = '#789';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            if (ball.active) {
+                const img = ballImages[ball.color];
+                if (img) {
+                    ctx.drawImage(img, ball.x - BALL_RADIUS, ball.y - BALL_RADIUS, BALL_RADIUS*2, BALL_RADIUS*2);
+                } else {
+                    ctx.beginPath();
+                    ctx.arc(ball.x, ball.y, BALL_RADIUS-1, 0, 2*Math.PI);
+                    ctx.fillStyle = ball.color;
+                    ctx.shadowBlur = 12;
+                    ctx.shadowColor = '#fff9';
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                    ctx.strokeStyle = '#fff';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+            }
+        }
+
+        function stopGame() {
+            gameActive = false;
+            clearInterval(gameInterval);
+        }
+
+        function setupControls() {
+            function handleStart(e) {
+                e.preventDefault();
+                if (!gameActive) return;
+                const rect = gameCanvas.getBoundingClientRect();
+                const scaleX = gameCanvas.width / rect.width;
+                const scaleY = gameCanvas.height / rect.height;
+                let clientX, clientY;
+                if (e.touches) {
+                    clientX = e.touches[0].clientX;
+                    clientY = e.touches[0].clientY;
+                } else {
+                    clientX = e.clientX;
+                    clientY = e.clientY;
+                }
+                aimX = (clientX - rect.left) * scaleX;
+                aimY = (clientY - rect.top) * scaleY;
+                aiming = true;
+            }
+
+            function handleMove(e) {
+                if (!aiming || !gameActive) return;
+                e.preventDefault();
+                const rect = gameCanvas.getBoundingClientRect();
+                const scaleX = gameCanvas.width / rect.width;
+                const scaleY = gameCanvas.height / rect.height;
+                let clientX, clientY;
+                if (e.touches) {
+                    clientX = e.touches[0].clientX;
+                    clientY = e.touches[0].clientY;
+                } else {
+                    clientX = e.clientX;
+                    clientY = e.clientY;
+                }
+                aimX = (clientX - rect.left) * scaleX;
+                aimY = (clientY - rect.top) * scaleY;
+            }
+
+            function handleEnd(e) {
+                if (!aiming || !gameActive) return;
+                e.preventDefault();
+                aiming = false;
+                const cannonX = gameCanvas.width / 2;
+                const cannonY = gameCanvas.height - 40;
+                const dx = aimX - cannonX;
+                const dy = aimY - cannonY;
+                shoot(dx, dy);
+            }
+
+            gameCanvas.addEventListener('mousedown', handleStart);
+            gameCanvas.addEventListener('mousemove', handleMove);
+            gameCanvas.addEventListener('mouseup', handleEnd);
+            gameCanvas.addEventListener('mouseleave', () => { aiming = false; });
+            gameCanvas.addEventListener('touchstart', handleStart, { passive: false });
+            gameCanvas.addEventListener('touchmove', handleMove, { passive: false });
+            gameCanvas.addEventListener('touchend', handleEnd, { passive: false });
+            gameCanvas.addEventListener('touchcancel', () => { aiming = false; });
+        }
     </script>
 </body>
 </html>
