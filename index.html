@@ -54,7 +54,7 @@
             text-shadow: 2px 2px 4px rgba(255, 255, 255, 0.5);
         }
 
-        h1 {
+        h1, h2 {
             font-size: 3rem;
             text-align: center;
             margin-bottom: 20px;
@@ -62,6 +62,9 @@
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             filter: drop-shadow(5px 5px 10px rgba(0,0,0,0.2));
+        }
+        h2 {
+            font-size: 2rem;
         }
 
         .input-group {
@@ -110,15 +113,15 @@
             box-shadow: 0 10px 0 #9a2c1f;
             text-shadow: 2px 2px 0 #9a2c1f;
         }
-        .btn.anonymous {
-            background: linear-gradient(145deg, #34495e, #2c3e50);
-            box-shadow: 0 10px 0 #1a252f;
-            text-shadow: 2px 2px 0 #1a252f;
-        }
-        .btn.secondary {
+        .btn.email {
             background: linear-gradient(145deg, #3498db, #2980b9);
             box-shadow: 0 10px 0 #1f618d;
             text-shadow: 2px 2px 0 #1f618d;
+        }
+        .btn.secondary {
+            background: linear-gradient(145deg, #34495e, #2c3e50);
+            box-shadow: 0 10px 0 #1a252f;
+            text-shadow: 2px 2px 0 #1a252f;
         }
         .error-msg {
             color: #e74c3c;
@@ -175,6 +178,12 @@
             font-size: 1.2rem;
             margin-top: 10px;
             display: inline-block;
+        }
+        .link-section {
+            background: rgba(255,255,255,0.2);
+            border-radius: 40px;
+            padding: 20px;
+            margin: 20px 0;
         }
     </style>
 </head>
@@ -321,7 +330,6 @@
                 if (!doc.exists) {
                     // Новый пользователь: создаём документ с временным именем
                     let defaultName = user.displayName || user.email || 'Гость';
-                    // Проверим, уникально ли временное имя? Если нет, добавим суффикс
                     defaultName = await getUniqueName(defaultName);
                     const newUser = {
                         name: defaultName,
@@ -349,7 +357,7 @@
             }
         });
 
-        // Функция для получения уникального имени (если временное имя занято)
+        // Функция для получения уникального имени
         async function getUniqueName(baseName) {
             let name = baseName;
             let suffix = 1;
@@ -369,17 +377,14 @@
                 showNameSetupScreen('Имя должно быть от 3 до 16 символов');
                 return;
             }
-            // Проверяем уникальность
             const snapshot = await db.collection('users').where('name', '==', newName).get();
             if (!snapshot.empty) {
-                // Если нашёлся другой документ с таким именем
                 const otherUser = snapshot.docs.find(doc => doc.id !== currentUser.id);
                 if (otherUser) {
                     showNameSetupScreen('Это имя уже занято, выберите другое');
                     return;
                 }
             }
-            // Обновляем имя в Firestore
             await db.collection('users').doc(currentUser.id).update({ name: newName });
             currentUser.name = newName;
             showMainMenu();
@@ -400,12 +405,32 @@
             document.getElementById('logoutBtn').addEventListener('click', () => auth.signOut());
         }
 
-        // Экран настроек (с возможностью сменить имя)
+        // Экран настроек (с возможностью сменить имя и привязать аккаунт)
         async function showSettings() {
             const userRef = db.collection('users').doc(currentUser.id);
             const doc = await userRef.get();
             const settings = doc.data().settings || { music: true, sound: true };
             currentUser.settings = settings;
+
+            const isAnonymous = auth.currentUser?.isAnonymous;
+
+            let linkSectionHtml = '';
+            if (isAnonymous) {
+                linkSectionHtml = `
+                    <div class="link-section">
+                        <h3 style="font-size:1.8rem; margin-bottom:15px;">🔗 Привязать аккаунт</h3>
+                        <p style="margin-bottom:15px;">Привяжите гостевой аккаунт, чтобы сохранить прогресс.</p>
+                        <button class="btn google" id="linkGoogleBtn">Привязать Google</button>
+                        <button class="btn email" id="linkEmailBtn">Привязать email и пароль</button>
+                        <div id="linkEmailForm" style="display:none; margin-top:20px;">
+                            <input type="email" id="linkEmail" placeholder="Email" />
+                            <input type="password" id="linkPassword" placeholder="Пароль (минимум 6 символов)" />
+                            <button class="btn" id="confirmLinkEmailBtn">Подтвердить</button>
+                        </div>
+                        <div id="linkError" class="error-msg"></div>
+                    </div>
+                `;
+            }
 
             appDiv.innerHTML = `
                 <h2>⚙️ Настройки</h2>
@@ -422,14 +447,14 @@
                     <input type="text" id="newName" value="${currentUser.name}" maxlength="16" minlength="3" />
                     <div id="nameStatus" class="error-msg" style="font-size:1rem;"></div>
                 </div>
+                ${linkSectionHtml}
                 <button class="btn" id="saveSettingsBtn">Сохранить настройки</button>
                 <button class="btn secondary" id="backBtn">Назад</button>
             `;
 
+            // Проверка уникальности имени
             const nameInput = document.getElementById('newName');
             const nameStatus = document.getElementById('nameStatus');
-
-            // Проверка уникальности имени при вводе
             nameInput.addEventListener('input', async () => {
                 const newName = nameInput.value.trim();
                 if (newName.length < 3 || newName.length > 16) {
@@ -449,6 +474,7 @@
                 }
             });
 
+            // Сохранение настроек и имени
             document.getElementById('saveSettingsBtn').addEventListener('click', async () => {
                 const music = document.getElementById('musicCheck').checked;
                 const sound = document.getElementById('soundCheck').checked;
@@ -459,7 +485,6 @@
                     return;
                 }
 
-                // Проверяем уникальность имени
                 const snapshot = await db.collection('users').where('name', '==', newName).get();
                 if (!snapshot.empty) {
                     const otherUser = snapshot.docs.find(doc => doc.id !== currentUser.id);
@@ -469,7 +494,6 @@
                     }
                 }
 
-                // Обновляем настройки и имя
                 await db.collection('users').doc(currentUser.id).update({
                     settings: { music, sound },
                     name: newName
@@ -481,6 +505,48 @@
             });
 
             document.getElementById('backBtn').addEventListener('click', showMainMenu);
+
+            // Обработчики для привязки (если они есть)
+            if (isAnonymous) {
+                const linkGoogleBtn = document.getElementById('linkGoogleBtn');
+                const linkEmailBtn = document.getElementById('linkEmailBtn');
+                const linkEmailForm = document.getElementById('linkEmailForm');
+                const linkError = document.getElementById('linkError');
+
+                linkGoogleBtn.addEventListener('click', async () => {
+                    try {
+                        const provider = new firebase.auth.GoogleAuthProvider();
+                        await auth.currentUser.linkWithPopup(provider);
+                        linkError.innerText = '';
+                        alert('Аккаунт успешно привязан к Google!');
+                        showSettings(); // обновим экран, кнопки должны исчезнуть
+                    } catch (error) {
+                        linkError.innerText = error.message;
+                    }
+                });
+
+                linkEmailBtn.addEventListener('click', () => {
+                    linkEmailForm.style.display = 'block';
+                });
+
+                document.getElementById('confirmLinkEmailBtn').addEventListener('click', async () => {
+                    const email = document.getElementById('linkEmail').value.trim();
+                    const password = document.getElementById('linkPassword').value;
+                    if (password.length < 6) {
+                        linkError.innerText = 'Пароль должен быть минимум 6 символов';
+                        return;
+                    }
+                    try {
+                        const credential = firebase.auth.EmailAuthProvider.credential(email, password);
+                        await auth.currentUser.linkWithCredential(credential);
+                        linkError.innerText = '';
+                        alert('Аккаунт успешно привязан к email!');
+                        showSettings();
+                    } catch (error) {
+                        linkError.innerText = error.message;
+                    }
+                });
+            }
         }
 
         // Экран рекордов
