@@ -65,19 +65,25 @@
         }
         .level-item {
             background: rgba(255, 255, 255, 0.3);
-            border-radius: 60px;
-            padding: 15px 20px;
+            border-radius: 40px;
+            padding: 20px;
             display: flex;
+            flex-direction: column;
             align-items: center;
-            justify-content: space-between;
+            gap: 15px;
             border: 2px solid rgba(255,255,255,0.5);
             box-shadow: 0 5px 10px rgba(0,0,0,0.1);
+        }
+        .level-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            padding: 0 5px;
         }
         .level-number {
             font-size: 2rem;
             font-weight: bold;
-            width: 60px;
-            text-align: center;
             color: #2c3e50;
         }
         .stars-container {
@@ -101,10 +107,11 @@
             background: linear-gradient(145deg, #f1c40f, #e67e22);
             color: white;
             border: none;
-            padding: 10px 25px;
+            padding: 12px 0;
             border-radius: 40px;
-            font-size: 1.3rem;
+            font-size: 1.5rem;
             font-weight: bold;
+            width: 100%;
             box-shadow: 0 5px 0 #b45d1a;
             cursor: pointer;
             transition: 0.1s;
@@ -140,7 +147,7 @@
     </div>
 
     <script>
-        // Firebase конфигурация (должна совпадать с index.html)
+        // Firebase конфигурация (такая же, как в index.html)
         const firebaseConfig = {
             apiKey: "AIzaSyAb0WLf9uyTXhs6eGw19i_42gUIZZCbP9c",
             authDomain: "bubble-shooter-game-6169e.firebaseapp.com",
@@ -154,7 +161,9 @@
         const auth = firebase.auth();
         const db = firebase.firestore();
 
-        // Генерация пузырьков
+        let currentUser = null;
+
+        // Генерация пузырьков фона
         (function createBubbles() {
             const container = document.getElementById('bubbles-container');
             for (let i = 0; i < 15; i++) {
@@ -175,7 +184,6 @@
         // Проверка авторизации
         auth.onAuthStateChanged(async (user) => {
             if (!user) {
-                // Не авторизован — возвращаем на главную
                 window.location.href = 'index.html';
                 return;
             }
@@ -184,11 +192,12 @@
             const userRef = db.collection('users').doc(user.uid);
             const doc = await userRef.get();
             if (!doc.exists) {
-                // Странно, но на всякий случай создадим
+                // Создаём, если вдруг нет (на всякий случай)
                 const newUser = {
                     name: user.displayName || user.email || 'Гость',
                     settings: { music: true, sound: true },
                     highScore: 0,
+                    endlessHighScore: 0,
                     campaignProgress: {},
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 };
@@ -196,6 +205,11 @@
                 currentUser = { id: user.uid, ...newUser };
             } else {
                 currentUser = { id: user.uid, ...doc.data() };
+                // Убедимся, что есть endlessHighScore
+                if (currentUser.endlessHighScore === undefined) {
+                    currentUser.endlessHighScore = 0;
+                    await userRef.update({ endlessHighScore: 0 });
+                }
             }
 
             // Отображаем уровни
@@ -218,9 +232,11 @@
 
                 levelsHtml.push(`
                     <div class="level-item">
-                        <span class="level-number">${i}</span>
-                        <div class="stars-container">
-                            ${starsHtml}
+                        <div class="level-top">
+                            <span class="level-number">${i}</span>
+                            <div class="stars-container">
+                                ${starsHtml}
+                            </div>
                         </div>
                         <button class="btn-play" onclick="playLevel(${i})">Играть</button>
                     </div>
@@ -246,4 +262,4 @@
         };
     </script>
 </body>
-  </html>
+</html>
