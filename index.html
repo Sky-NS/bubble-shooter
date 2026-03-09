@@ -1,0 +1,1099 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Bubble Shooter · кампания</title>
+    <!-- Firebase SDK (compat) -->
+    <script src="https://www.gstatic.com/firebasejs/12.10.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/12.10.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore-compat.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Comic Sans MS', 'Chalkboard SE', 'Segoe UI', cursive, sans-serif;
+        }
+        body {
+            min-height: 100vh;
+            background: radial-gradient(circle at 20% 30%, #ff9a9e, #fad0c4, #fad0c4);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 16px;
+            position: relative;
+            overflow-x: hidden;
+        }
+        .bubble {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            pointer-events: none;
+            bottom: -100px;
+            animation: rise 8s infinite ease-in;
+        }
+        @keyframes rise {
+            0% { transform: translateY(0) scale(1); opacity: 0.8; }
+            100% { transform: translateY(-120vh) scale(1.5); opacity: 0; }
+        }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.25);
+            backdrop-filter: blur(10px);
+            border-radius: 50px;
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3), inset 0 0 20px rgba(255, 255, 255, 0.5);
+            padding: 40px 30px;
+            width: 100%;
+            max-width: 500px;
+            transition: all 0.3s;
+            color: #2c3e50;
+            text-shadow: 2px 2px 4px rgba(255, 255, 255, 0.5);
+        }
+        h1, h2 {
+            font-size: 3rem;
+            text-align: center;
+            margin-bottom: 20px;
+            background: linear-gradient(45deg, #f093fb, #f5576c);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(5px 5px 10px rgba(0,0,0,0.2));
+        }
+        h2 {
+            font-size: 2rem;
+        }
+        .input-group {
+            margin: 20px 0;
+            text-align: left;
+        }
+        input[type="email"], input[type="password"], input[type="text"] {
+            width: 100%;
+            padding: 15px 25px;
+            font-size: 1.2rem;
+            border: none;
+            border-radius: 60px;
+            background: rgba(255, 255, 255, 0.8);
+            box-shadow: inset 0 5px 10px rgba(0,0,0,0.1), 0 5px 0 #ccc;
+            outline: none;
+            transition: 0.2s;
+            margin-bottom: 15px;
+        }
+        input:focus {
+            box-shadow: inset 0 5px 10px rgba(0,0,0,0.1), 0 5px 0 #f39c12;
+        }
+        .btn {
+            display: inline-block;
+            width: 100%;
+            padding: 15px 20px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            border: none;
+            border-radius: 60px;
+            background: linear-gradient(145deg, #f1c40f, #e67e22);
+            color: white;
+            text-shadow: 2px 2px 0 #b45d1a;
+            box-shadow: 0 10px 0 #b45d1a, 0 5px 20px rgba(0,0,0,0.3);
+            cursor: pointer;
+            transition: 0.1s;
+            margin: 10px 0;
+        }
+        .btn:active {
+            transform: translateY(5px);
+            box-shadow: 0 5px 0 #b45d1a, 0 5px 20px rgba(0,0,0,0.3);
+        }
+        .btn.google {
+            background: linear-gradient(145deg, #db4a39, #c53727);
+            box-shadow: 0 10px 0 #9a2c1f;
+        }
+        .btn.email {
+            background: linear-gradient(145deg, #3498db, #2980b9);
+            box-shadow: 0 10px 0 #1f618d;
+        }
+        .btn.secondary {
+            background: linear-gradient(145deg, #34495e, #2c3e50);
+            box-shadow: 0 10px 0 #1a252f;
+        }
+        .btn.anonymous {
+            background: linear-gradient(145deg, #34495e, #2c3e50);
+            box-shadow: 0 10px 0 #1a252f;
+        }
+        .error-msg {
+            color: #e74c3c;
+            font-size: 1.2rem;
+            margin: 10px 0;
+            text-align: center;
+        }
+        .success-msg {
+            color: #27ae60;
+            font-size: 1.2rem;
+            margin: 10px 0;
+            text-align: center;
+        }
+        .user-info {
+            font-size: 1.5rem;
+            text-align: right;
+            margin-bottom: 20px;
+            color: #2c3e50;
+        }
+        .settings-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 2rem;
+            margin: 25px 0;
+            background: rgba(255,255,255,0.3);
+            padding: 15px 25px;
+            border-radius: 60px;
+        }
+        .settings-item input[type="checkbox"] {
+            width: 40px;
+            height: 40px;
+            transform: scale(1.5);
+            accent-color: #e67e22;
+        }
+        .scores-table {
+            width: 100%;
+            font-size: 1.6rem;
+            border-collapse: collapse;
+        }
+        .scores-table th {
+            background: rgba(0,0,0,0.1);
+            padding: 10px;
+        }
+        .scores-table td {
+            padding: 8px;
+            border-bottom: 1px solid rgba(255,255,255,0.3);
+            text-align: center;
+        }
+        .toggle-link {
+            color: #2980b9;
+            cursor: pointer;
+            text-decoration: underline;
+            font-size: 1.2rem;
+            margin-top: 10px;
+            display: inline-block;
+        }
+        .link-section {
+            background: rgba(255,255,255,0.2);
+            border-radius: 40px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        /* Игровой экран */
+        .game-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(0,0,0,0.3);
+            border-radius: 40px;
+            padding: 10px 20px;
+            margin-bottom: 15px;
+            color: white;
+            font-size: 1.5rem;
+        }
+        .target-info {
+            background: #e67e22;
+            padding: 5px 15px;
+            border-radius: 30px;
+        }
+        .queue-container {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin: 15px 0;
+        }
+        .ball-item {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            border: 3px solid #555;
+        }
+        .ball-item.current {
+            border-color: #f1c40f;
+            transform: scale(1.1);
+        }
+        canvas {
+            background: #0b0f1a;
+            border-radius: 24px;
+            display: block;
+            width: 100%;
+            height: auto;
+            border: 2px solid #2a2f3a;
+            touch-action: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="bubbles-container"></div>
+    <div class="glass-panel" id="app"></div>
+
+    <script>
+        // ---------- НАСТРОЙКИ FIREBASE ----------
+        const firebaseConfig = {
+            apiKey: "AIzaSyAb0WLf9uyTXhs6eGw19i_42gUIZZCbP9c",
+            authDomain: "bubble-shooter-game-6169e.firebaseapp.com",
+            projectId: "bubble-shooter-game-6169e",
+            storageBucket: "bubble-shooter-game-6169e.firebasestorage.app",
+            messagingSenderId: "260116679476",
+            appId: "1:260116679476:web:bf0b75316ce263d483f361"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        let currentUser = null; // объект пользователя из Auth + данные из Firestore
+
+        // Генерация пузырьков
+        (function createBubbles() {
+            const container = document.getElementById('bubbles-container');
+            for (let i = 0; i < 15; i++) {
+                const bubble = document.createElement('div');
+                bubble.className = 'bubble';
+                const size = Math.random() * 100 + 30;
+                bubble.style.width = size + 'px';
+                bubble.style.height = size + 'px';
+                bubble.style.left = Math.random() * 100 + '%';
+                bubble.style.animationDelay = Math.random() * 5 + 's';
+                bubble.style.animationDuration = Math.random() * 5 + 8 + 's';
+                container.appendChild(bubble);
+            }
+        })();
+
+        const appDiv = document.getElementById('app');
+
+        // ---------- ЭКРАНЫ АВТОРИЗАЦИИ ----------
+        function showLoginScreen(errorMsg = '', successMsg = '') {
+            appDiv.innerHTML = `
+                <h1>🍭 BUBBLE</h1>
+                <div class="input-group">
+                    <input type="email" id="email" placeholder="Email" />
+                    <input type="password" id="password" placeholder="Пароль" />
+                </div>
+                <button class="btn" id="loginBtn">Войти с email</button>
+                <button class="btn google" id="googleBtn">Войти через Google</button>
+                <button class="btn anonymous" id="anonymousBtn">Войти как гость</button>
+                ${errorMsg ? `<div class="error-msg">${errorMsg}</div>` : ''}
+                ${successMsg ? `<div class="success-msg">${successMsg}</div>` : ''}
+                <span class="toggle-link" id="toggleRegisterLink">Нет аккаунта? Зарегистрироваться</span>
+            `;
+
+            document.getElementById('loginBtn').addEventListener('click', loginWithEmail);
+            document.getElementById('googleBtn').addEventListener('click', loginWithGoogle);
+            document.getElementById('anonymousBtn').addEventListener('click', loginAnonymously);
+            document.getElementById('toggleRegisterLink').addEventListener('click', () => showRegisterScreen());
+        }
+
+        function showRegisterScreen(errorMsg = '', successMsg = '') {
+            appDiv.innerHTML = `
+                <h1>🍭 Регистрация</h1>
+                <div class="input-group">
+                    <input type="email" id="regEmail" placeholder="Email" />
+                    <input type="password" id="regPassword" placeholder="Пароль (минимум 6 символов)" />
+                </div>
+                <button class="btn" id="registerBtn">Зарегистрироваться</button>
+                ${errorMsg ? `<div class="error-msg">${errorMsg}</div>` : ''}
+                ${successMsg ? `<div class="success-msg">${successMsg}</div>` : ''}
+                <span class="toggle-link" id="toggleLoginLink">Уже есть аккаунт? Войти</span>
+            `;
+
+            document.getElementById('registerBtn').addEventListener('click', registerWithEmail);
+            document.getElementById('toggleLoginLink').addEventListener('click', () => showLoginScreen());
+        }
+
+        function showNameSetupScreen(errorMsg = '') {
+            appDiv.innerHTML = `
+                <h1>🍭 Выберите имя</h1>
+                <div class="input-group">
+                    <input type="text" id="setupName" placeholder="Имя (3-16 символов)" maxlength="16" minlength="3" />
+                </div>
+                <button class="btn" id="setupNameBtn">Продолжить</button>
+                ${errorMsg ? `<div class="error-msg">${errorMsg}</div>` : ''}
+            `;
+            document.getElementById('setupNameBtn').addEventListener('click', handleNameSetup);
+        }
+
+        // Функции аутентификации
+        async function loginWithEmail() {
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+            try {
+                await auth.signInWithEmailAndPassword(email, password);
+            } catch (error) {
+                showLoginScreen(error.message);
+            }
+        }
+
+        async function registerWithEmail() {
+            const email = document.getElementById('regEmail').value.trim();
+            const password = document.getElementById('regPassword').value;
+            if (password.length < 6) {
+                showRegisterScreen('Пароль должен быть минимум 6 символов');
+                return;
+            }
+            try {
+                await auth.createUserWithEmailAndPassword(email, password);
+            } catch (error) {
+                showRegisterScreen(error.message);
+            }
+        }
+
+        async function loginWithGoogle() {
+            const provider = new firebase.auth.GoogleAuthProvider();
+            try {
+                await auth.signInWithPopup(provider);
+            } catch (error) {
+                showLoginScreen(error.message);
+            }
+        }
+
+        async function loginAnonymously() {
+            try {
+                await auth.signInAnonymously();
+            } catch (error) {
+                showLoginScreen(error.message);
+            }
+        }
+
+        // Слушатель состояния аутентификации
+        auth.onAuthStateChanged(async (user) => {
+            if (user) {
+                const userRef = db.collection('users').doc(user.uid);
+                const doc = await userRef.get();
+                if (!doc.exists) {
+                    let defaultName = user.displayName || user.email || 'Гость';
+                    defaultName = await getUniqueName(defaultName);
+                    const newUser = {
+                        name: defaultName,
+                        settings: { music: true, sound: true },
+                        highScore: 0,
+                        campaignProgress: {},
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                    };
+                    await userRef.set(newUser);
+                    currentUser = { id: user.uid, ...newUser };
+                    showNameSetupScreen();
+                } else {
+                    currentUser = { id: user.uid, ...doc.data() };
+                    if (!currentUser.name || currentUser.name === 'Гость' || currentUser.name.includes('@')) {
+                        showNameSetupScreen();
+                    } else {
+                        showMainMenu();
+                    }
+                }
+            } else {
+                currentUser = null;
+                showLoginScreen();
+            }
+        });
+
+        async function getUniqueName(baseName) {
+            let name = baseName;
+            let suffix = 1;
+            while (true) {
+                const snapshot = await db.collection('users').where('name', '==', name).get();
+                if (snapshot.empty) break;
+                name = `${baseName}${suffix}`;
+                suffix++;
+            }
+            return name;
+        }
+
+        async function handleNameSetup() {
+            const newName = document.getElementById('setupName').value.trim();
+            if (newName.length < 3 || newName.length > 16) {
+                showNameSetupScreen('Имя должно быть от 3 до 16 символов');
+                return;
+            }
+            const snapshot = await db.collection('users').where('name', '==', newName).get();
+            if (!snapshot.empty) {
+                const otherUser = snapshot.docs.find(doc => doc.id !== currentUser.id);
+                if (otherUser) {
+                    showNameSetupScreen('Это имя уже занято, выберите другое');
+                    return;
+                }
+            }
+            await db.collection('users').doc(currentUser.id).update({ name: newName });
+            currentUser.name = newName;
+            showMainMenu();
+        }
+
+        // ---------- ГЛАВНОЕ МЕНЮ ----------
+        function showMainMenu() {
+            appDiv.innerHTML = `
+                <div class="user-info">👋 Привет, ${currentUser.name}</div>
+                <button class="btn menu-btn" id="campaignBtn">📚 Кампания</button>
+                <button class="btn menu-btn secondary" id="endlessBtn">♾️ Бесконечный режим</button>
+                <button class="btn menu-btn secondary" id="recordsBtn">🏆 Рекорды</button>
+                <button class="btn menu-btn secondary" id="settingsBtn">⚙️ Настройки</button>
+                <button class="btn secondary" id="logoutBtn" style="font-size:1.5rem; margin-top:30px;">🚪 Выйти</button>
+            `;
+            document.getElementById('campaignBtn').addEventListener('click', showCampaignLevels);
+            document.getElementById('endlessBtn').addEventListener('click', () => alert('Бесконечный режим появится в следующем обновлении!'));
+            document.getElementById('recordsBtn').addEventListener('click', showRecords);
+            document.getElementById('settingsBtn').addEventListener('click', showSettings);
+            document.getElementById('logoutBtn').addEventListener('click', () => auth.signOut());
+        }
+
+        // ---------- КАМПАНИЯ: ВЫБОР УРОВНЯ ----------
+        function showCampaignLevels() {
+            const levels = [1, 2, 3, 4, 5];
+            const levelCards = levels.map(level => {
+                const stars = currentUser.campaignProgress?.[level] || 0;
+                const starHtml = '★'.repeat(stars) + '☆'.repeat(3 - stars);
+                return `
+                    <div style="background: rgba(255,255,255,0.3); border-radius: 30px; padding: 20px; width: 120px; text-align: center;">
+                        <div style="font-size: 2rem;">🎯</div>
+                        <div style="font-size: 1.8rem;">${level}</div>
+                        <div style="color: gold; font-size: 1.5rem;">${starHtml}</div>
+                        <button class="btn" style="padding: 10px; font-size:1.2rem;" onclick="window.startLevel(${level})">Играть</button>
+                    </div>
+                `;
+            }).join('');
+
+            appDiv.innerHTML = `
+                <h2>📚 Кампания</h2>
+                <div style="display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; margin: 30px 0;">
+                    ${levelCards}
+                </div>
+                <button class="btn secondary" id="backToMenuBtn">Назад</button>
+            `;
+            document.getElementById('backToMenuBtn').addEventListener('click', showMainMenu);
+        }
+
+        // Глобальная функция старта уровня (будет заменена на открытие игры)
+        window.startLevel = (level) => {
+            startGame({ mode: 'campaign', level: level });
+        };
+
+        // ---------- ЭКРАН НАСТРОЕК ----------
+        async function showSettings() {
+            const userRef = db.collection('users').doc(currentUser.id);
+            const doc = await userRef.get();
+            const settings = doc.data().settings || { music: true, sound: true };
+            currentUser.settings = settings;
+
+            const isAnonymous = auth.currentUser?.isAnonymous;
+
+            let linkSectionHtml = '';
+            if (isAnonymous) {
+                linkSectionHtml = `
+                    <div class="link-section">
+                        <h3 style="font-size:1.8rem; margin-bottom:15px;">🔗 Привязать аккаунт</h3>
+                        <p style="margin-bottom:15px;">Привяжите гостевой аккаунт, чтобы сохранить прогресс.</p>
+                        <button class="btn google" id="linkGoogleBtn">Привязать Google</button>
+                        <button class="btn email" id="linkEmailBtn">Привязать email и пароль</button>
+                        <div id="linkEmailForm" style="display:none; margin-top:20px;">
+                            <input type="email" id="linkEmail" placeholder="Email" />
+                            <input type="password" id="linkPassword" placeholder="Пароль (минимум 6 символов)" />
+                            <button class="btn" id="confirmLinkEmailBtn">Подтвердить</button>
+                        </div>
+                        <div id="linkError" class="error-msg"></div>
+                    </div>
+                `;
+            }
+
+            appDiv.innerHTML = `
+                <h2>⚙️ Настройки</h2>
+                <div class="settings-item">
+                    <span>🎵 Музыка</span>
+                    <input type="checkbox" id="musicCheck" ${settings.music ? 'checked' : ''}>
+                </div>
+                <div class="settings-item">
+                    <span>🔊 Звуки</span>
+                    <input type="checkbox" id="soundCheck" ${settings.sound ? 'checked' : ''}>
+                </div>
+                <div class="input-group">
+                    <label style="font-size:1.5rem;">Ваше имя:</label>
+                    <input type="text" id="newName" value="${currentUser.name}" maxlength="16" minlength="3" />
+                    <div id="nameStatus" class="error-msg" style="font-size:1rem;"></div>
+                </div>
+                ${linkSectionHtml}
+                <button class="btn" id="saveSettingsBtn">Сохранить настройки</button>
+                <button class="btn secondary" id="backBtn">Назад</button>
+            `;
+
+            const nameInput = document.getElementById('newName');
+            const nameStatus = document.getElementById('nameStatus');
+            nameInput.addEventListener('input', async () => {
+                const newName = nameInput.value.trim();
+                if (newName.length < 3 || newName.length > 16) {
+                    nameStatus.innerText = 'Имя должно быть от 3 до 16 символов';
+                    return;
+                }
+                const snapshot = await db.collection('users').where('name', '==', newName).get();
+                if (!snapshot.empty) {
+                    const otherUser = snapshot.docs.find(doc => doc.id !== currentUser.id);
+                    if (otherUser) {
+                        nameStatus.innerText = '❌ Имя занято';
+                    } else {
+                        nameStatus.innerText = '✅ Имя свободно';
+                    }
+                } else {
+                    nameStatus.innerText = '✅ Имя свободно';
+                }
+            });
+
+            document.getElementById('saveSettingsBtn').addEventListener('click', async () => {
+                const music = document.getElementById('musicCheck').checked;
+                const sound = document.getElementById('soundCheck').checked;
+                const newName = nameInput.value.trim();
+
+                if (newName.length < 3 || newName.length > 16) {
+                    alert('Имя должно быть от 3 до 16 символов');
+                    return;
+                }
+
+                const snapshot = await db.collection('users').where('name', '==', newName).get();
+                if (!snapshot.empty) {
+                    const otherUser = snapshot.docs.find(doc => doc.id !== currentUser.id);
+                    if (otherUser) {
+                        alert('Это имя уже занято, выберите другое');
+                        return;
+                    }
+                }
+
+                await db.collection('users').doc(currentUser.id).update({
+                    settings: { music, sound },
+                    name: newName
+                });
+                currentUser.settings = { music, sound };
+                currentUser.name = newName;
+                alert('Настройки сохранены');
+                showMainMenu();
+            });
+
+            document.getElementById('backBtn').addEventListener('click', showMainMenu);
+
+            if (isAnonymous) {
+                document.getElementById('linkGoogleBtn').addEventListener('click', async () => {
+                    try {
+                        const provider = new firebase.auth.GoogleAuthProvider();
+                        await auth.currentUser.linkWithPopup(provider);
+                        alert('Аккаунт привязан к Google');
+                        showSettings();
+                    } catch (error) {
+                        document.getElementById('linkError').innerText = error.message;
+                    }
+                });
+                document.getElementById('linkEmailBtn').addEventListener('click', () => {
+                    document.getElementById('linkEmailForm').style.display = 'block';
+                });
+                document.getElementById('confirmLinkEmailBtn').addEventListener('click', async () => {
+                    const email = document.getElementById('linkEmail').value.trim();
+                    const password = document.getElementById('linkPassword').value;
+                    if (password.length < 6) {
+                        document.getElementById('linkError').innerText = 'Пароль минимум 6 символов';
+                        return;
+                    }
+                    try {
+                        const credential = firebase.auth.EmailAuthProvider.credential(email, password);
+                        await auth.currentUser.linkWithCredential(credential);
+                        alert('Аккаунт привязан к email');
+                        showSettings();
+                    } catch (error) {
+                        document.getElementById('linkError').innerText = error.message;
+                    }
+                });
+            }
+        }
+
+        // ---------- РЕКОРДЫ (ПОКА HIGHSCORE) ----------
+        async function showRecords() {
+            const snapshot = await db.collection('users')
+                .orderBy('highScore', 'desc')
+                .limit(10)
+                .get();
+            let rows = '';
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                rows += `<tr><td>${data.name}</td><td>${data.highScore || 0}</td></tr>`;
+            });
+            appDiv.innerHTML = `
+                <h2>🏆 Рекорды (бесконечный режим)</h2>
+                <table class="scores-table">
+                    <tr><th>Имя</th><th>Счёт</th></tr>
+                    ${rows}
+                </table>
+                <button class="btn secondary" id="backBtn">Назад</button>
+            `;
+            document.getElementById('backBtn').addEventListener('click', showMainMenu);
+        }
+
+        // ---------- ИГРОВОЙ ДВИЖОК ----------
+        let gameActive = false;
+        let gameCanvas, ctx;
+        let gameInterval;
+
+        // Параметры уровня
+        let currentLevel = 1;
+        let targetScore = 1000; // базово, будет пересчитываться от уровня
+        let gameScore = 0;
+        let gameCombo = 0;
+
+        // Настройки игры
+        const COLS = 9;
+        const ROWS = 12;
+        const BALL_RADIUS = 18;
+        const CELL_W = BALL_RADIUS * 2;
+        const CELL_H = BALL_RADIUS * 1.65;
+        const X_OFFSET = BALL_RADIUS;
+        const COLORS = ['#e67e22', '#3498db', '#2ecc71', '#e74c3c', '#9b59b6'];
+        const SHOTS_PER_NEW_ROW = 5; // новая строка каждые 5 выстрелов
+
+        let grid = [];
+        let shotsFired = 0;
+        let ballQueue = [];
+        let shooting = false;
+        let ball = { active: false };
+
+        function startGame(params) {
+            currentLevel = params.level;
+            targetScore = 500 + currentLevel * 500; // например, 1 уровень: 1000, 2: 1500 и т.д.
+            gameScore = 0;
+            gameCombo = 0;
+
+            initGrid();
+            initQueue();
+
+            // Показываем игровой экран
+            appDiv.innerHTML = `
+                <div class="game-header">
+                    <span>Уровень ${currentLevel}</span>
+                    <span class="target-info">🎯 ${gameScore}/${targetScore}</span>
+                </div>
+                <canvas id="gameCanvas" width="360" height="440"></canvas>
+                <div class="queue-container" id="queueContainer"></div>
+                <button class="btn secondary" id="exitGameBtn">Выйти в меню</button>
+            `;
+
+            gameCanvas = document.getElementById('gameCanvas');
+            ctx = gameCanvas.getContext('2d');
+            updateQueueDisplay();
+
+            document.getElementById('exitGameBtn').addEventListener('click', () => {
+                stopGame();
+                showMainMenu();
+            });
+
+            // Запуск игрового цикла
+            gameActive = true;
+            gameInterval = setInterval(updateGame, 1000 / 60); // 60 fps
+
+            // События мыши/тача
+            setupGameControls();
+        }
+
+        function stopGame() {
+            gameActive = false;
+            clearInterval(gameInterval);
+        }
+
+        function initGrid() {
+            grid = [];
+            for (let r = 0; r < ROWS; r++) {
+                grid[r] = Array(COLS).fill(null);
+            }
+            // Заполняем верхние 3 ряда
+            for (let r = 0; r < 3; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    grid[r][c] = COLORS[Math.floor(Math.random() * COLORS.length)];
+                }
+            }
+            shotsFired = 0;
+        }
+
+        function initQueue() {
+            ballQueue = [];
+            for (let i = 0; i < 3; i++) {
+                ballQueue.push(COLORS[Math.floor(Math.random() * COLORS.length)]);
+            }
+        }
+
+        function updateQueueDisplay() {
+            const container = document.getElementById('queueContainer');
+            if (!container) return;
+            container.innerHTML = ballQueue.map((color, index) => `
+                <div class="ball-item ${index === 0 ? 'current' : ''}" style="background: ${color};"></div>
+            `).join('');
+        }
+
+        function shiftQueue() {
+            ballQueue.shift();
+            ballQueue.push(COLORS[Math.floor(Math.random() * COLORS.length)]);
+            updateQueueDisplay();
+        }
+
+        // Получить координаты ячейки
+        function getBallXY(row, col) {
+            const x = col * CELL_W + (row % 2 === 0 ? 0 : X_OFFSET) + BALL_RADIUS;
+            const y = row * CELL_H + BALL_RADIUS + 15;
+            return { x, y };
+        }
+
+        // Поиск ближайшей свободной ячейки
+        function findNearestFreeCell(x, y) {
+            let minDist = Infinity;
+            let best = null;
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    if (grid[r][c] !== null) continue;
+                    const { x: cx, y: cy } = getBallXY(r, c);
+                    const d = Math.hypot(x - cx, y - cy);
+                    if (d < minDist) {
+                        minDist = d;
+                        best = { row: r, col: c };
+                    }
+                }
+            }
+            return best;
+        }
+
+        // Проверка столкновения летящего шара
+        function checkCollision(ballX, ballY, vx, vy) {
+            if (ballX - BALL_RADIUS < 0) return { type: 'wall', side: 'left', newVx: Math.abs(vx) };
+            if (ballX + BALL_RADIUS > gameCanvas.width) return { type: 'wall', side: 'right', newVx: -Math.abs(vx) };
+            if (ballY - BALL_RADIUS < 0) return { type: 'ceiling', x: ballX, y: ballY };
+
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    if (grid[r][c] === null) continue;
+                    const { x: cx, y: cy } = getBallXY(r, c);
+                    const dist = Math.hypot(ballX - cx, ballY - cy);
+                    if (dist < 2 * BALL_RADIUS - 2) {
+                        return { type: 'ball', row: r, col: c, x: cx, y: cy };
+                    }
+                }
+            }
+            return null;
+        }
+
+        // Поиск кластера одинакового цвета
+        function findCluster(row, col, color) {
+            if (!grid[row]?.[col] || grid[row][col] !== color) return [];
+            const visited = Array(ROWS).fill().map(() => Array(COLS).fill(false));
+            const queue = [[row, col]];
+            const cluster = [];
+            while (queue.length) {
+                const [r, c] = queue.shift();
+                if (visited[r][c]) continue;
+                visited[r][c] = true;
+                if (grid[r][c] === color) {
+                    cluster.push([r, c]);
+                    const neighbors = [
+                        [r-1, c], [r+1, c], [r, c-1], [r, c+1],
+                        [r-1, c + (r%2===0 ? -1 : 1)], [r+1, c + (r%2===0 ? -1 : 1)]
+                    ];
+                    for (let [nr, nc] of neighbors) {
+                        if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS && !visited[nr][nc] && grid[nr][nc] === color) {
+                            queue.push([nr, nc]);
+                        }
+                    }
+                }
+            }
+            return cluster;
+        }
+
+        // Удаление зависших шаров
+        function removeFloating() {
+            const visited = Array(ROWS).fill().map(() => Array(COLS).fill(false));
+            const queue = [];
+
+            for (let c = 0; c < COLS; c++) {
+                if (grid[0][c] !== null) {
+                    queue.push([0, c]);
+                    visited[0][c] = true;
+                }
+            }
+
+            while (queue.length) {
+                const [r, c] = queue.shift();
+                const neighbors = [
+                    [r-1, c], [r+1, c], [r, c-1], [r, c+1],
+                    [r-1, c + (r%2===0 ? -1 : 1)], [r+1, c + (r%2===0 ? -1 : 1)]
+                ];
+                for (let [nr, nc] of neighbors) {
+                    if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS && !visited[nr][nc] && grid[nr][nc] !== null) {
+                        visited[nr][nc] = true;
+                        queue.push([nr, nc]);
+                    }
+                }
+            }
+
+            let removed = [];
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    if (grid[r][c] !== null && !visited[r][c]) {
+                        removed.push({ row: r, col: c, color: grid[r][c] });
+                        grid[r][c] = null;
+                    }
+                }
+            }
+            return removed;
+        }
+
+        // Добавление новой строки сверху
+        function addNewRow() {
+            for (let r = ROWS - 1; r > 0; r--) {
+                grid[r] = [...grid[r-1]];
+            }
+            grid[0] = Array(COLS).fill(null).map(() => COLORS[Math.floor(Math.random() * COLORS.length)]);
+        }
+
+        // Обработка выстрела
+        function processShot(targetRow, targetCol, ballColor) {
+            if (targetRow === null || targetCol === null) return 0;
+
+            grid[targetRow][targetCol] = ballColor;
+
+            let totalDestroyed = 0;
+            let pointsEarned = 0;
+
+            const cluster = findCluster(targetRow, targetCol, ballColor);
+            if (cluster.length >= 3) {
+                for (let [r, c] of cluster) {
+                    grid[r][c] = null;
+                    totalDestroyed++;
+                    pointsEarned += 10;
+                }
+            }
+
+            const floating = removeFloating();
+            floating.forEach(item => {
+                totalDestroyed++;
+                pointsEarned += 10;
+            });
+
+            if (totalDestroyed > 0) {
+                gameCombo++;
+                gameScore += pointsEarned * gameCombo;
+            } else {
+                gameCombo = 0;
+            }
+
+            // Обновляем заголовок
+            const targetSpan = document.querySelector('.target-info');
+            if (targetSpan) {
+                targetSpan.innerText = `🎯 ${gameScore}/${targetScore}`;
+            }
+
+            // Проверка победы
+            if (gameScore >= targetScore) {
+                // Победа! Рассчитываем звёзды (1 звезда за прохождение, больше за перебор)
+                let stars = 1;
+                if (gameScore >= targetScore * 1.5) stars = 2;
+                if (gameScore >= targetScore * 2) stars = 3;
+                saveCampaignProgress(currentLevel, stars);
+                alert(`Уровень пройден! Вы получили ${stars} ★`);
+                stopGame();
+                showMainMenu();
+                return;
+            }
+
+            // Проверка поражения (если последний ряд не пуст)
+            for (let c = 0; c < COLS; c++) {
+                if (grid[ROWS-1][c] !== null) {
+                    alert('Игра окончена...');
+                    stopGame();
+                    showMainMenu();
+                    return;
+                }
+            }
+
+            return totalDestroyed;
+        }
+
+        // Сохранение прогресса кампании
+        async function saveCampaignProgress(level, stars) {
+            const currentStars = currentUser.campaignProgress?.[level] || 0;
+            if (stars > currentStars) {
+                const update = {};
+                update[`campaignProgress.${level}`] = stars;
+                await db.collection('users').doc(currentUser.id).update(update);
+                currentUser.campaignProgress[level] = stars;
+            }
+        }
+
+        // Выстрел
+        function shoot(dx, dy) {
+            if (shooting || !gameActive) return;
+            const len = Math.hypot(dx, dy);
+            if (len < 0.001) return;
+            const speed = 5;
+            ball = {
+                x: gameCanvas.width / 2,
+                y: gameCanvas.height - 40,
+                vx: (dx / len) * speed,
+                vy: (dy / len) * speed,
+                color: ballQueue[0],
+                active: true
+            };
+            shooting = true;
+            shiftQueue();
+        }
+
+        // Обновление анимации
+        function updateGame() {
+            if (!gameActive) return;
+
+            if (shooting && ball.active) {
+                ball.x += ball.vx;
+                ball.y += ball.vy;
+
+                const collision = checkCollision(ball.x, ball.y, ball.vx, ball.vy);
+                if (collision) {
+                    if (collision.type === 'wall') {
+                        ball.vx = collision.newVx;
+                    } else if (collision.type === 'ceiling') {
+                        const cell = findNearestFreeCell(ball.x, ball.y);
+                        ball.active = false;
+                        shooting = false;
+                        if (cell) {
+                            processShot(cell.row, cell.col, ball.color);
+                            shotsFired++;
+                            if (shotsFired >= SHOTS_PER_NEW_ROW) {
+                                addNewRow();
+                                shotsFired = 0;
+                            }
+                        }
+                    } else if (collision.type === 'ball') {
+                        const cell = findNearestFreeCell(ball.x, ball.y);
+                        ball.active = false;
+                        shooting = false;
+                        if (cell) {
+                            processShot(cell.row, cell.col, ball.color);
+                            shotsFired++;
+                            if (shotsFired >= SHOTS_PER_NEW_ROW) {
+                                addNewRow();
+                                shotsFired = 0;
+                            }
+                        }
+                    }
+                }
+                if (ball.y - BALL_RADIUS > gameCanvas.height) {
+                    ball.active = false;
+                    shooting = false;
+                }
+            }
+
+            drawGame();
+        }
+
+        function drawGame() {
+            ctx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
+
+            // Рисуем шары
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    if (grid[r][c]) {
+                        const { x, y } = getBallXY(r, c);
+                        ctx.beginPath();
+                        ctx.arc(x, y, BALL_RADIUS-1, 0, 2*Math.PI);
+                        ctx.fillStyle = grid[r][c];
+                        ctx.shadowColor = '#fff3';
+                        ctx.shadowBlur = 8;
+                        ctx.fill();
+                        ctx.shadowBlur = 0;
+                        ctx.strokeStyle = '#000';
+                        ctx.lineWidth = 1.5;
+                        ctx.stroke();
+                    }
+                }
+            }
+
+            // Пушка
+            const cannonX = gameCanvas.width / 2;
+            const cannonY = gameCanvas.height - 40;
+            ctx.fillStyle = '#456';
+            ctx.beginPath();
+            ctx.moveTo(cannonX - 18, cannonY - 10);
+            ctx.lineTo(cannonX + 18, cannonY - 10);
+            ctx.lineTo(cannonX, cannonY + 10);
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = '#789';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Летящий шар
+            if (ball.active) {
+                ctx.beginPath();
+                ctx.arc(ball.x, ball.y, BALL_RADIUS-1, 0, 2*Math.PI);
+                ctx.fillStyle = ball.color;
+                ctx.shadowBlur = 12;
+                ctx.shadowColor = '#fff9';
+                ctx.fill();
+                ctx.shadowBlur = 0;
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+        }
+
+        // Управление
+        function setupGameControls() {
+            let aiming = false;
+            let aimX, aimY;
+
+            function handleStart(e) {
+                e.preventDefault();
+                if (!gameActive) return;
+                const rect = gameCanvas.getBoundingClientRect();
+                const scaleX = gameCanvas.width / rect.width;
+                const scaleY = gameCanvas.height / rect.height;
+                let clientX, clientY;
+                if (e.touches) {
+                    clientX = e.touches[0].clientX;
+                    clientY = e.touches[0].clientY;
+                } else {
+                    clientX = e.clientX;
+                    clientY = e.clientY;
+                }
+                aimX = (clientX - rect.left) * scaleX;
+                aimY = (clientY - rect.top) * scaleY;
+                aiming = true;
+            }
+
+            function handleMove(e) {
+                if (!aiming || !gameActive) return;
+                e.preventDefault();
+                const rect = gameCanvas.getBoundingClientRect();
+                const scaleX = gameCanvas.width / rect.width;
+                const scaleY = gameCanvas.height / rect.height;
+                let clientX, clientY;
+                if (e.touches) {
+                    clientX = e.touches[0].clientX;
+                    clientY = e.touches[0].clientY;
+                } else {
+                    clientX = e.clientX;
+                    clientY = e.clientY;
+                }
+                aimX = (clientX - rect.left) * scaleX;
+                aimY = (clientY - rect.top) * scaleY;
+            }
+
+            function handleEnd(e) {
+                if (!aiming || !gameActive) return;
+                e.preventDefault();
+                aiming = false;
+                const cannonX = gameCanvas.width / 2;
+                const cannonY = gameCanvas.height - 40;
+                const dx = aimX - cannonX;
+                const dy = aimY - cannonY;
+                shoot(dx, dy);
+            }
+
+            gameCanvas.addEventListener('mousedown', handleStart);
+            gameCanvas.addEventListener('mousemove', handleMove);
+            gameCanvas.addEventListener('mouseup', handleEnd);
+            gameCanvas.addEventListener('mouseleave', () => { aiming = false; });
+            gameCanvas.addEventListener('touchstart', handleStart, { passive: false });
+            gameCanvas.addEventListener('touchmove', handleMove, { passive: false });
+            gameCanvas.addEventListener('touchend', handleEnd, { passive: false });
+            gameCanvas.addEventListener('touchcancel', () => { aiming = false; });
+        }
+
+        // Стартовый экран будет показан onAuthStateChanged
+    </script>
+</body>
+</html>
