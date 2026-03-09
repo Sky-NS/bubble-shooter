@@ -142,6 +142,42 @@
         .hidden {
             display: none;
         }
+        .scores-table {
+            width: 100%;
+            font-size: 1.6rem;
+            border-collapse: collapse;
+        }
+        .scores-table th {
+            background: rgba(0,0,0,0.1);
+            padding: 10px;
+        }
+        .scores-table td {
+            padding: 8px;
+            border-bottom: 1px solid rgba(255,255,255,0.3);
+            text-align: center;
+        }
+        .settings-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 2rem;
+            margin: 25px 0;
+            background: rgba(255,255,255,0.3);
+            padding: 15px 25px;
+            border-radius: 60px;
+        }
+        .settings-item input[type="checkbox"] {
+            width: 40px;
+            height: 40px;
+            transform: scale(1.5);
+            accent-color: #e67e22;
+        }
+        .link-section {
+            background: rgba(255,255,255,0.2);
+            border-radius: 40px;
+            padding: 20px;
+            margin: 20px 0;
+        }
     </style>
 </head>
 <body>
@@ -149,7 +185,7 @@
     <div class="glass-panel" id="app"></div>
 
     <script>
-        // Firebase конфигурация (замените на свои данные)
+        // Firebase конфигурация
         const firebaseConfig = {
             apiKey: "AIzaSyAb0WLf9uyTXhs6eGw19i_42gUIZZCbP9c",
             authDomain: "bubble-shooter-game-6169e.firebaseapp.com",
@@ -165,7 +201,7 @@
 
         let currentUser = null;
 
-        // Генерация фоновых пузырьков
+        // Генерация пузырьков
         (function createBubbles() {
             const container = document.getElementById('bubbles-container');
             for (let i = 0; i < 15; i++) {
@@ -183,7 +219,7 @@
 
         const appDiv = document.getElementById('app');
 
-        // ---------- ЭКРАНЫ ----------
+        // Экран входа
         function showLoginScreen(errorMsg = '', successMsg = '') {
             appDiv.innerHTML = `
                 <h1>🍭 BUBBLE</h1>
@@ -204,6 +240,7 @@
             document.getElementById('toggleRegisterLink').addEventListener('click', () => showRegisterScreen());
         }
 
+        // Экран регистрации
         function showRegisterScreen(errorMsg = '', successMsg = '') {
             appDiv.innerHTML = `
                 <h1>🍭 Регистрация</h1>
@@ -220,6 +257,7 @@
             document.getElementById('toggleLoginLink').addEventListener('click', () => showLoginScreen());
         }
 
+        // Экран выбора имени (для новых пользователей)
         function showNameSetupScreen(errorMsg = '') {
             appDiv.innerHTML = `
                 <h1>🍭 Выберите имя</h1>
@@ -232,6 +270,114 @@
             document.getElementById('setupNameBtn').addEventListener('click', handleNameSetup);
         }
 
+        // Функции аутентификации
+        async function loginWithEmail() {
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+            try {
+                await auth.signInWithEmailAndPassword(email, password);
+            } catch (error) {
+                showLoginScreen(error.message);
+            }
+        }
+
+        async function registerWithEmail() {
+            const email = document.getElementById('regEmail').value.trim();
+            const password = document.getElementById('regPassword').value;
+            if (password.length < 6) {
+                showRegisterScreen('Пароль должен быть минимум 6 символов');
+                return;
+            }
+            try {
+                await auth.createUserWithEmailAndPassword(email, password);
+            } catch (error) {
+                showRegisterScreen(error.message);
+            }
+        }
+
+        async function loginWithGoogle() {
+            const provider = new firebase.auth.GoogleAuthProvider();
+            try {
+                await auth.signInWithPopup(provider);
+            } catch (error) {
+                showLoginScreen(error.message);
+            }
+        }
+
+        async function loginAnonymously() {
+            try {
+                await auth.signInAnonymously();
+            } catch (error) {
+                showLoginScreen(error.message);
+            }
+        }
+
+        // Слушатель состояния аутентификации
+        auth.onAuthStateChanged(async (user) => {
+            if (user) {
+                const userRef = db.collection('users').doc(user.uid);
+                const doc = await userRef.get();
+                if (!doc.exists) {
+                    let defaultName = user.displayName || user.email || 'Гость';
+                    // Уникальность
+                    let uniqueName = defaultName;
+                    let counter = 1;
+                    while (true) {
+                        const snap = await db.collection('users').where('name', '==', uniqueName).get();
+                        if (snap.empty) break;
+                        uniqueName = `${defaultName}${counter}`;
+                        counter++;
+                    }
+                    const newUser = {
+                        name: uniqueName,
+                        settings: { music: true, sound: true },
+                        highScore: 0,
+                        endlessHighScore: 0,
+                        campaignProgress: {},
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                    };
+                    await userRef.set(newUser);
+                    currentUser = { id: user.uid, ...newUser };
+                    showNameSetupScreen();
+                } else {
+                    currentUser = { id: user.uid, ...doc.data() };
+                    // Убедимся, что есть поле endlessHighScore (для старых пользователей)
+                    if (currentUser.endlessHighScore === undefined) {
+                        currentUser.endlessHighScore = 0;
+                        await userRef.update({ endlessHighScore: 0 });
+                    }
+                    if (!currentUser.name || currentUser.name === 'Гость' || currentUser.name.includes('@')) {
+                        showNameSetupScreen();
+                    } else {
+                        showMainMenu();
+                    }
+                }
+            } else {
+                currentUser = null;
+                showLoginScreen();
+            }
+        });
+
+        async function handleNameSetup() {
+            const newName = document.getElementById('setupName').value.trim();
+            if (newName.length < 3 || newName.length > 16) {
+                showNameSetupScreen('Имя должно быть от 3 до 16 символов');
+                return;
+            }
+            const snapshot = await db.collection('users').where('name', '==', newName).get();
+            if (!snapshot.empty) {
+                const otherUser = snapshot.docs.find(doc => doc.id !== currentUser.id);
+                if (otherUser) {
+                    showNameSetupScreen('Это имя уже занято, выберите другое');
+                    return;
+                }
+            }
+            await db.collection('users').doc(currentUser.id).update({ name: newName });
+            currentUser.name = newName;
+            showMainMenu();
+        }
+
+        // Главное меню
         function showMainMenu() {
             appDiv.innerHTML = `
                 <div class="user-info">👋 Привет, ${currentUser.name}</div>
@@ -243,17 +389,37 @@
             `;
             document.getElementById('campaignBtn').addEventListener('click', () => window.location.href = 'campaign.html');
             document.getElementById('endlessBtn').addEventListener('click', () => window.location.href = 'endless.html');
-            document.getElementById('recordsBtn').addEventListener('click', () => alert('Рекорды появятся в бесконечном режиме'));
+            document.getElementById('recordsBtn').addEventListener('click', showRecords);
             document.getElementById('settingsBtn').addEventListener('click', showSettings);
             document.getElementById('logoutBtn').addEventListener('click', () => auth.signOut());
         }
 
-        // ---------- НАСТРОЙКИ (упрощённо) ----------
+        // Настройки (упрощённо)
         async function showSettings() {
             const userRef = db.collection('users').doc(currentUser.id);
             const doc = await userRef.get();
             const settings = doc.data().settings || { music: true, sound: true };
             currentUser.settings = settings;
+
+            const isAnonymous = auth.currentUser?.isAnonymous;
+
+            let linkSectionHtml = '';
+            if (isAnonymous) {
+                linkSectionHtml = `
+                    <div class="link-section">
+                        <h3 style="font-size:1.8rem; margin-bottom:15px;">🔗 Привязать аккаунт</h3>
+                        <p style="margin-bottom:15px;">Привяжите гостевой аккаунт, чтобы сохранить прогресс.</p>
+                        <button class="btn google" id="linkGoogleBtn">Привязать Google</button>
+                        <button class="btn email" id="linkEmailBtn">Привязать email и пароль</button>
+                        <div id="linkEmailForm" style="display:none; margin-top:20px;">
+                            <input type="email" id="linkEmail" placeholder="Email" />
+                            <input type="password" id="linkPassword" placeholder="Пароль (минимум 6 символов)" />
+                            <button class="btn" id="confirmLinkEmailBtn">Подтвердить</button>
+                        </div>
+                        <div id="linkError" class="error-msg"></div>
+                    </div>
+                `;
+            }
 
             appDiv.innerHTML = `
                 <h2>⚙️ Настройки</h2>
@@ -262,6 +428,7 @@
                     <input type="text" id="newName" value="${currentUser.name}" maxlength="16" minlength="3" />
                     <div id="nameStatus" class="error-msg" style="font-size:1rem;"></div>
                 </div>
+                ${linkSectionHtml}
                 <button class="btn" id="saveSettingsBtn">Сохранить имя</button>
                 <button class="btn secondary" id="backBtn">Назад</button>
             `;
@@ -308,108 +475,93 @@
             });
 
             document.getElementById('backBtn').addEventListener('click', showMainMenu);
-        }
 
-        // ---------- АУТЕНТИФИКАЦИЯ ----------
-        async function loginWithEmail() {
-            const email = document.getElementById('email').value.trim();
-            const password = document.getElementById('password').value;
-            try {
-                await auth.signInWithEmailAndPassword(email, password);
-            } catch (error) {
-                showLoginScreen(error.message);
-            }
-        }
-
-        async function registerWithEmail() {
-            const email = document.getElementById('regEmail').value.trim();
-            const password = document.getElementById('regPassword').value;
-            if (password.length < 6) {
-                showRegisterScreen('Пароль должен быть минимум 6 символов');
-                return;
-            }
-            try {
-                await auth.createUserWithEmailAndPassword(email, password);
-            } catch (error) {
-                showRegisterScreen(error.message);
-            }
-        }
-
-        async function loginWithGoogle() {
-            const provider = new firebase.auth.GoogleAuthProvider();
-            try {
-                await auth.signInWithPopup(provider);
-            } catch (error) {
-                showLoginScreen(error.message);
-            }
-        }
-
-        async function loginAnonymously() {
-            try {
-                await auth.signInAnonymously();
-            } catch (error) {
-                showLoginScreen(error.message);
+            if (isAnonymous) {
+                document.getElementById('linkGoogleBtn').addEventListener('click', async () => {
+                    try {
+                        const provider = new firebase.auth.GoogleAuthProvider();
+                        await auth.currentUser.linkWithPopup(provider);
+                        alert('Аккаунт привязан к Google');
+                        showSettings();
+                    } catch (error) {
+                        document.getElementById('linkError').innerText = error.message;
+                    }
+                });
+                document.getElementById('linkEmailBtn').addEventListener('click', () => {
+                    document.getElementById('linkEmailForm').style.display = 'block';
+                });
+                document.getElementById('confirmLinkEmailBtn').addEventListener('click', async () => {
+                    const email = document.getElementById('linkEmail').value.trim();
+                    const password = document.getElementById('linkPassword').value;
+                    if (password.length < 6) {
+                        document.getElementById('linkError').innerText = 'Пароль минимум 6 символов';
+                        return;
+                    }
+                    try {
+                        const credential = firebase.auth.EmailAuthProvider.credential(email, password);
+                        await auth.currentUser.linkWithCredential(credential);
+                        alert('Аккаунт привязан к email');
+                        showSettings();
+                    } catch (error) {
+                        document.getElementById('linkError').innerText = error.message;
+                    }
+                });
             }
         }
 
-        async function handleNameSetup() {
-            const newName = document.getElementById('setupName').value.trim();
-            if (newName.length < 3 || newName.length > 16) {
-                showNameSetupScreen('Имя должно быть от 3 до 16 символов');
-                return;
-            }
-            const snapshot = await db.collection('users').where('name', '==', newName).get();
-            if (!snapshot.empty) {
-                const otherUser = snapshot.docs.find(doc => doc.id !== currentUser.id);
-                if (otherUser) {
-                    showNameSetupScreen('Это имя уже занято, выберите другое');
-                    return;
+        // Обновлённая функция showRecords с учётом топ-10 и реального места пользователя
+        async function showRecords() {
+            // Получаем топ-10 по бесконечному режиму
+            const topSnapshot = await db.collection('users')
+                .orderBy('endlessHighScore', 'desc')
+                .limit(10)
+                .get();
+            let topRows = '';
+            let rank = 1;
+            topSnapshot.forEach(doc => {
+                const data = doc.data();
+                const name = data.name || 'Без имени';
+                const score = data.endlessHighScore || 0;
+                topRows += `<tr><td>${rank}</td><td>${name}</td><td>${score}</td></tr>`;
+                rank++;
+            });
+
+            // Если пользователь авторизован и не в топ-10, показываем его место
+            let userRow = '';
+            if (currentUser) {
+                const userScore = currentUser.endlessHighScore || 0;
+                // Считаем, сколько игроков имеют больший счёт
+                const betterCountSnapshot = await db.collection('users')
+                    .where('endlessHighScore', '>', userScore)
+                    .get();
+                const betterCount = betterCountSnapshot.size;
+                const userRank = betterCount + 1;
+
+                if (userRank > 10) {
+                    userRow = `
+                        <tr style="border-top: 2px solid gold; background: rgba(255,215,0,0.1);">
+                            <td>${userRank}</td>
+                            <td>${currentUser.name}</td>
+                            <td>${userScore}</td>
+                        </tr>
+                    `;
                 }
             }
-            await db.collection('users').doc(currentUser.id).update({ name: newName });
-            currentUser.name = newName;
-            showMainMenu();
+
+            appDiv.innerHTML = `
+                <h2>🏆 Рекорды (бесконечный режим)</h2>
+                <table class="scores-table">
+                    <tr><th>Место</th><th>Имя</th><th>Счёт</th></tr>
+                    ${topRows}
+                    ${userRow}
+                </table>
+                <button class="btn secondary" id="backBtn">Назад</button>
+            `;
+            document.getElementById('backBtn').addEventListener('click', showMainMenu);
         }
 
-        // ---------- СЛУШАТЕЛЬ СОСТОЯНИЯ ----------
-        auth.onAuthStateChanged(async (user) => {
-            if (user) {
-                const userRef = db.collection('users').doc(user.uid);
-                const doc = await userRef.get();
-                if (!doc.exists) {
-                    let defaultName = user.displayName || user.email || 'Гость';
-                    // Уникальность
-                    let uniqueName = defaultName;
-                    let counter = 1;
-                    while (true) {
-                        const snap = await db.collection('users').where('name', '==', uniqueName).get();
-                        if (snap.empty) break;
-                        uniqueName = `${defaultName}${counter}`;
-                        counter++;
-                    }
-                    const newUser = {
-                        name: uniqueName,
-                        settings: { music: true, sound: true },
-                        highScore: 0,
-                        campaignProgress: {},
-                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                    };
-                    await userRef.set(newUser);
-                    currentUser = { id: user.uid, ...newUser };
-                    showNameSetupScreen();
-                } else {
-                    currentUser = { id: user.uid, ...doc.data() };
-                    if (!currentUser.name || currentUser.name === 'Гость' || currentUser.name.includes('@')) {
-                        showNameSetupScreen();
-                    } else {
-                        showMainMenu();
-                    }
-                }
-            } else {
-                currentUser = null;
-                showLoginScreen();
-            }
-        });
+        // Стартовый экран (будет показан, если нет сессии)
+        // onAuthStateChanged уже всё запустит
     </script>
 </body>
 </html>
