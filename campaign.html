@@ -103,7 +103,7 @@
             color: #555;
             text-shadow: none;
         }
-        .btn-play {
+        .btn-play, .btn-secret {
             background: linear-gradient(145deg, #f1c40f, #e67e22);
             color: white;
             border: none;
@@ -119,6 +119,19 @@
         .btn-play:active {
             transform: translateY(5px);
             box-shadow: none;
+        }
+        .btn-secret {
+            background: linear-gradient(145deg, #9b59b6, #8e44ad);
+            box-shadow: 0 5px 0 #6c3483;
+        }
+        .btn-secret:active {
+            transform: translateY(5px);
+            box-shadow: none;
+        }
+        .btn-secret.disabled {
+            opacity: 0.5;
+            pointer-events: none;
+            filter: grayscale(1);
         }
         .btn.secondary {
             background: linear-gradient(145deg, #34495e, #2c3e50);
@@ -138,6 +151,40 @@
             color: white;
             padding: 40px;
         }
+        .toast {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.8);
+            color: gold;
+            font-size: 2rem;
+            padding: 30px 40px;
+            border-radius: 60px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border: 2px solid gold;
+            max-width: 80%;
+            text-align: center;
+        }
+        .toast.show {
+            opacity: 1;
+        }
+        .toast-star {
+            font-size: 4rem;
+            animation: twinkle 0.5s infinite alternate;
+        }
+        @keyframes twinkle {
+            from { transform: scale(1); text-shadow: 0 0 10px gold; }
+            to { transform: scale(1.2); text-shadow: 0 0 20px orange; }
+        }
     </style>
 </head>
 <body>
@@ -145,9 +192,13 @@
     <div class="glass-panel" id="app">
         <div class="loading">Загрузка уровней...</div>
     </div>
+    <div id="toast" class="toast">
+        <span class="toast-star">✨</span>
+        <span id="toastText"></span>
+    </div>
 
     <script>
-        // Firebase конфигурация (такая же, как в index.html)
+        // Firebase конфигурация
         const firebaseConfig = {
             apiKey: "AIzaSyAb0WLf9uyTXhs6eGw19i_42gUIZZCbP9c",
             authDomain: "bubble-shooter-game-6169e.firebaseapp.com",
@@ -162,6 +213,16 @@
         const db = firebase.firestore();
 
         let currentUser = null;
+        const toast = document.getElementById('toast');
+        const toastText = document.getElementById('toastText');
+
+        function showToast(message) {
+            toastText.innerText = message;
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 5000); // 5 секунд
+        }
 
         // Генерация пузырьков фона
         (function createBubbles() {
@@ -188,11 +249,9 @@
                 return;
             }
 
-            // Получаем данные пользователя из Firestore
             const userRef = db.collection('users').doc(user.uid);
             const doc = await userRef.get();
             if (!doc.exists) {
-                // Создаём, если вдруг нет (на всякий случай)
                 const newUser = {
                     name: user.displayName || user.email || 'Гость',
                     settings: { music: true, sound: true },
@@ -205,25 +264,21 @@
                 currentUser = { id: user.uid, ...newUser };
             } else {
                 currentUser = { id: user.uid, ...doc.data() };
-                // Убедимся, что есть endlessHighScore
                 if (currentUser.endlessHighScore === undefined) {
                     currentUser.endlessHighScore = 0;
                     await userRef.update({ endlessHighScore: 0 });
                 }
             }
 
-            // Отображаем уровни
             renderLevels(currentUser.campaignProgress || {});
         });
 
         function renderLevels(progress) {
-            const totalLevels = 10; // Можно увеличить до 1000, но для примера 10
+            const totalLevels = 10; // можно увеличить
             const levelsHtml = [];
 
             for (let i = 1; i <= totalLevels; i++) {
-                const starsEarned = progress[i] || 0; // от 0 до 5
-
-                // Формируем 5 звёзд
+                const starsEarned = progress[i] || 0;
                 let starsHtml = '';
                 for (let s = 1; s <= 5; s++) {
                     const filled = s <= starsEarned;
@@ -243,6 +298,28 @@
                 `);
             }
 
+            // Проверяем, выполнены ли все 10 уровней на 5 звёзд
+            const allFiveStars = (() => {
+                for (let i = 1; i <= totalLevels; i++) {
+                    if ((progress[i] || 0) < 5) return false;
+                }
+                return true;
+            })();
+
+            // Добавляем секретный уровень
+            const secretButtonClass = allFiveStars ? 'btn-secret' : 'btn-secret disabled';
+            levelsHtml.push(`
+                <div class="level-item">
+                    <div class="level-top">
+                        <span class="level-number" style="color: gold;">✨</span>
+                        <div class="stars-container">
+                            <span style="font-size:2rem; color:gold;">Секретный уровень</span>
+                        </div>
+                    </div>
+                    <button class="${secretButtonClass}" onclick="showSecretMessage()" ${allFiveStars ? '' : 'disabled'}>Открыть</button>
+                </div>
+            `);
+
             appDiv.innerHTML = `
                 <h1>📚 Кампания</h1>
                 <div class="level-list">
@@ -256,9 +333,14 @@
             });
         }
 
-        // Глобальная функция для вызова из onclick
+        // Глобальная функция для обычных уровней
         window.playLevel = (level) => {
             window.location.href = `game.html?mode=campaign&level=${level}`;
+        };
+
+        // Глобальная функция для секретного уровня
+        window.showSecretMessage = () => {
+            showToast('Спасибо за прохождение тестовой кампании! Если мне не будет лень, то кампания будет дополняться новыми уровнями с новыми механиками. Но пока что это всё, что есть. Если хотите, можете поиграть в бесконечный режим и посоревноваться с другими игроками. С уважением, Никита ✨');
         };
     </script>
 </body>
