@@ -194,9 +194,9 @@
         // Настройки сетки с увеличенным радиусом
         const COLS = 9;
         const ROWS = 12;
-        const BALL_RADIUS = 28; // увеличено
+        const BALL_RADIUS = 30; // увеличено
         const CELL_W = BALL_RADIUS * 2; // 44
-        const CELL_H = 40; // примерно 1.8 * 22 = 39.6, округлили для целочисленности
+        const CELL_H = 54; // примерно 1.8 * 22 = 39.6, округлили для целочисленности
         const X_OFFSET = BALL_RADIUS; // 22
         const COLOR_NAMES = {
             '#e67e22': 'orange',
@@ -500,7 +500,7 @@
                     <div class="header-score" id="scoreDisplay">0</div>
                     <div class="header-record">🏆 Рекорд: <span id="recordDisplay">${currentRecord}</span></div>
                 </div>
-                <canvas id="gameCanvas" width="420" height="500"></canvas>
+                <canvas id="gameCanvas" width="500" height="500"></canvas>
                 <div class="powerup-row">
                     <canvas id="bombCanvas" width="60" height="60" class="powerup-canvas"></canvas>
                     <div class="queue-circle" id="queueCircle">
