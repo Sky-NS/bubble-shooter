@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Bubble Shooter · Кампания</title>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/12.10.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/12.10.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore-compat.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Comic Sans MS', 'Chalkboard SE', 'Segoe UI', cursive, sans-serif;
+        }
+        body {
+            min-height: 100vh;
+            background: radial-gradient(circle at 20% 30%, #ff9a9e, #fad0c4, #fad0c4);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 16px;
+            position: relative;
+            overflow-x: hidden;
+        }
+        .bubble {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            pointer-events: none;
+            bottom: -100px;
+            animation: rise 8s infinite ease-in;
+        }
+        @keyframes rise {
+            0% { transform: translateY(0) scale(1); opacity: 0.8; }
+            100% { transform: translateY(-120vh) scale(1.5); opacity: 0; }
+        }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.25);
+            backdrop-filter: blur(10px);
+            border-radius: 50px;
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3), inset 0 0 20px rgba(255, 255, 255, 0.5);
+            padding: 30px 25px;
+            width: 100%;
+            max-width: 500px;
+            color: #2c3e50;
+            text-shadow: 2px 2px 4px rgba(255, 255, 255, 0.5);
+        }
+        h1 {
+            font-size: 2.5rem;
+            text-align: center;
+            margin-bottom: 20px;
+            background: linear-gradient(45deg, #f093fb, #f5576c);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .message {
+            text-align: center;
+            margin: 40px 0;
+            font-size: 1.8rem;
+            color: #2c3e50;
+        }
+        .message small {
+            font-size: 1.2rem;
+            color: #555;
+        }
+        .btn.secondary {
+            background: linear-gradient(145deg, #34495e, #2c3e50);
+            box-shadow: 0 5px 0 #1a252f;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 60px;
+            font-size: 1.3rem;
+            width: 100%;
+            margin-top: 20px;
+            cursor: pointer;
+        }
+        .btn.secondary:active {
+            transform: translateY(5px);
+            box-shadow: none;
+        }
+        .loading {
+            text-align: center;
+            font-size: 1.5rem;
+            color: white;
+            padding: 40px;
+        }
+    </style>
+</head>
+<body>
+    <div id="bubbles-container"></div>
+    <div class="glass-panel" id="app">
+        <div class="loading">Загрузка...</div>
+    </div>
+
+    <script>
+        // Firebase конфигурация
+        const firebaseConfig = {
+            apiKey: "AIzaSyAb0WLf9uyTXhs6eGw19i_42gUIZZCbP9c",
+            authDomain: "bubble-shooter-game-6169e.firebaseapp.com",
+            projectId: "bubble-shooter-game-6169e",
+            storageBucket: "bubble-shooter-game-6169e.firebasestorage.app",
+            messagingSenderId: "260116679476",
+            appId: "1:260116679476:web:bf0b75316ce263d483f361"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        let currentUser = null;
+
+        // Генерация пузырьков фона
+        (function createBubbles() {
+            const container = document.getElementById('bubbles-container');
+            for (let i = 0; i < 15; i++) {
+                const bubble = document.createElement('div');
+                bubble.className = 'bubble';
+                const size = Math.random() * 100 + 30;
+                bubble.style.width = size + 'px';
+                bubble.style.height = size + 'px';
+                bubble.style.left = Math.random() * 100 + '%';
+                bubble.style.animationDelay = Math.random() * 5 + 's';
+                bubble.style.animationDuration = Math.random() * 5 + 8 + 's';
+                container.appendChild(bubble);
+            }
+        })();
+
+        const appDiv = document.getElementById('app');
+
+        // Проверка авторизации
+        auth.onAuthStateChanged(async (user) => {
+            if (!user) {
+                window.location.href = 'index.html';
+                return;
+            }
+
+            const userRef = db.collection('users').doc(user.uid);
+            const doc = await userRef.get();
+            if (!doc.exists) {
+                window.location.href = 'index.html';
+                return;
+            }
+            currentUser = { id: user.uid, ...doc.data() };
+
+            // Отображаем заглушку вместо списка уровней
+            appDiv.innerHTML = `
+                <h1>📚 Кампания</h1>
+                <div class="message">
+                    🚧 Кампания временно недоступна<br>
+                    <small>Ведутся технические работы</small>
+                </div>
+                <button class="btn secondary" id="backBtn">← Назад</button>
+            `;
+
+            document.getElementById('backBtn').addEventListener('click', () => {
+                window.location.href = 'index.html';
+            });
+        });
+    </script>
+</body>
+</html>
