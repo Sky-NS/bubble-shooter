@@ -232,7 +232,7 @@
         }
 
         const SHOTS_PER_NEW_ROW = 5;
-        const MAX_TRAJECTORY_LENGTH = 300;
+        const MAX_TRAJECTORY_LENGTH = 350;
         const BOMB_THRESHOLD = 100;        // шаров для получения клубка
         const RAINBOW_THRESHOLD = 50;       // шаров для получения универсального шара
         const BALL_SPEED = 6;               // увеличена с 5 до 6 (+20%)
@@ -500,7 +500,7 @@
                     <div class="header-score" id="scoreDisplay">0</div>
                     <div class="header-record">🏆 Рекорд: <span id="recordDisplay">${currentRecord}</span></div>
                 </div>
-                <canvas id="gameCanvas" width="400" height="500"></canvas>
+                <canvas id="gameCanvas" width="420" height="500"></canvas>
                 <div class="powerup-row">
                     <canvas id="bombCanvas" width="60" height="60" class="powerup-canvas"></canvas>
                     <div class="queue-circle" id="queueCircle">
