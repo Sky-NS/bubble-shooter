@@ -280,6 +280,8 @@
         let gameActive = false;
         let gameCanvas, ctx;
         let gameInterval;
+        const FPS = 30; // снижено с 60 для оптимизации
+        const FRAME_TIME = 1000 / FPS;
 
         // Настройки сетки
         const COLS = 9;
@@ -352,6 +354,9 @@
         let gameScore = 0;
         let gameCombo = 0;
 
+        // Кэш координат ячеек
+        let cellPositions = [];
+
         // Супершары
         let bombCharge = 0;
         let bombAvailable = false;
@@ -392,7 +397,25 @@
             if (freezeCanvas) freezeCtx = freezeCanvas.getContext('2d');
         }
 
-        // Деактивировать все супершары
+        // Обновление кэша координат
+        function updateCellPositions() {
+            cellPositions = [];
+            for (let r = 0; r < ROWS; r++) {
+                const row = [];
+                for (let c = 0; c < COLS; c++) {
+                    const offset = (r + startOffset) % 2;
+                    const x = c * CELL_W + offset * X_OFFSET + BALL_RADIUS;
+                    const y = r * CELL_H + BALL_RADIUS + 15;
+                    row.push({ x, y });
+                }
+                cellPositions.push(row);
+            }
+        }
+
+        function getBallXY(row, col) {
+            return cellPositions[row][col];
+        }
+
         function deactivateAllPowerups() {
             bombActive = false;
             rainbowActive = false;
@@ -426,9 +449,7 @@
 
             let alpha = 1.0;
             if (bombAvailable && !bombActive) {
-                // Пульсация прозрачностью, цвет остаётся красным
                 alpha = 0.2 + 0.8 * (Math.sin(pulsePhase) * 0.5 + 0.5);
-                // progressColor не меняем
             }
 
             const percent = bombCharge / BOMB_THRESHOLD;
@@ -816,7 +837,7 @@
 
             gameActive = true;
             gameOverTriggered = false;
-            gameInterval = setInterval(updateGame, 1000 / 60);
+            gameInterval = setInterval(updateGame, FRAME_TIME);
 
             setupControls();
 
@@ -844,6 +865,7 @@
                 }
             }
             startOffset = 0;
+            updateCellPositions();
             shotsFired = 0;
             currentRowThreshold = getRandomThreshold();
             gameScore = 0;
@@ -868,21 +890,16 @@
             updateQueueDisplay();
         }
 
-        function getBallXY(row, col) {
-            const offset = (row + startOffset) % 2;
-            const x = col * CELL_W + offset * X_OFFSET + BALL_RADIUS;
-            const y = row * CELL_H + BALL_RADIUS + 15;
-            return { x, y };
-        }
-
         function findNearestFreeCell(x, y) {
             let minDist = Infinity;
             let best = null;
             for (let r = 0; r < ROWS; r++) {
+                const rowPos = cellPositions[r];
                 for (let c = 0; c < COLS; c++) {
                     if (grid[r][c] !== null) continue;
-                    const { x: cx, y: cy } = getBallXY(r, c);
-                    const d = Math.hypot(x - cx, y - cy);
+                    const cx = rowPos[c].x;
+                    const cy = rowPos[c].y;
+                    const d = (x - cx) * (x - cx) + (y - cy) * (y - cy); // без sqrt для скорости
                     if (d < minDist) {
                         minDist = d;
                         best = { row: r, col: c };
@@ -937,10 +954,14 @@
             if (ballY - BALL_RADIUS < 0) return { type: 'ceiling', x: ballX, y: ballY };
 
             for (let r = 0; r < ROWS; r++) {
+                const rowPos = cellPositions[r];
                 for (let c = 0; c < COLS; c++) {
                     if (grid[r][c] === null) continue;
-                    const { x: cx, y: cy } = getBallXY(r, c);
-                    const dist = Math.hypot(ballX - cx, ballY - cy);
+                    const cx = rowPos[c].x;
+                    const cy = rowPos[c].y;
+                    const dx = ballX - cx;
+                    const dy = ballY - cy;
+                    const dist = Math.hypot(dx, dy);
                     if (dist < 2 * BALL_RADIUS - 2) {
                         return { type: 'ball', row: r, col: c, x: cx, y: cy };
                     }
@@ -1055,20 +1076,21 @@
             }
             grid[0] = Array(COLS).fill(null).map(() => COLORS[Math.floor(Math.random() * COLORS.length)]);
             startOffset = 1 - startOffset;
+            updateCellPositions(); // обновляем кэш координат
         }
 
         function addDyingBalls(balls) {
             const now = performance.now();
-            balls.forEach(b => {
+            for (let b of balls) {
                 const { row, col, color } = b;
-                const { x, y } = getBallXY(row, col);
+                const { x, y } = cellPositions[row][col];
                 dyingBalls.push({
                     x, y,
                     color,
                     startTime: now,
                     duration: 800
                 });
-            });
+            }
         }
 
         function explodeBomb(row, col) {
@@ -1137,7 +1159,7 @@
             for (let r = 0; r < ROWS; r++) {
                 for (let c = 0; c < COLS; c++) {
                     if (grid[r][c] !== null) {
-                        const { y } = getBallXY(r, c);
+                        const y = cellPositions[r][c].y;
                         if (y + BALL_RADIUS >= DEATH_LINE_Y) {
                             return true;
                         }
@@ -1183,7 +1205,7 @@
             updateScoreDisplay();
             gameActive = true;
             gameOverTriggered = false;
-            gameInterval = setInterval(updateGame, 1000 / 60);
+            gameInterval = setInterval(updateGame, FRAME_TIME);
         });
 
         document.getElementById('menuBtn').addEventListener('click', () => {
@@ -1391,6 +1413,7 @@
             if (pulsePhase > 2 * Math.PI) pulsePhase -= 2 * Math.PI;
 
             const now = performance.now();
+            // Фильтруем умирающие шары, которые завершили анимацию
             dyingBalls = dyingBalls.filter(b => now - b.startTime < b.duration);
 
             if (shooting && ball.active) {
@@ -1485,9 +1508,11 @@
                         if (simY - BALL_RADIUS < 0) break;
 
                         for (let r = 0; r < ROWS; r++) {
+                            const rowPos = cellPositions[r];
                             for (let c = 0; c < COLS; c++) {
                                 if (grid[r][c] !== null) {
-                                    const { x: cx, y: cy } = getBallXY(r, c);
+                                    const cx = rowPos[c].x;
+                                    const cy = rowPos[c].y;
                                     const dist = Math.hypot(simX - cx, simY - cy);
                                     if (dist < 2 * BALL_RADIUS) {
                                         highlightRow = r;
@@ -1548,9 +1573,10 @@
 
             // Рисуем шары
             for (let r = 0; r < ROWS; r++) {
+                const rowPos = cellPositions[r];
                 for (let c = 0; c < COLS; c++) {
                     if (grid[r][c]) {
-                        const { x, y } = getBallXY(r, c);
+                        const { x, y } = rowPos[c];
                         const img = ballImages[grid[r][c]];
                         if (img) {
                             ctx.drawImage(img, x - BALL_RADIUS, y - BALL_RADIUS, BALL_RADIUS*2, BALL_RADIUS*2);
@@ -1578,7 +1604,7 @@
             }
 
             const now = performance.now();
-            dyingBalls.forEach(b => {
+            for (let b of dyingBalls) {
                 const elapsed = now - b.startTime;
                 const progress = Math.min(elapsed / b.duration, 1);
                 const radius = BALL_RADIUS * (1 - progress * 0.8);
@@ -1601,7 +1627,7 @@
                     ctx.stroke();
                     ctx.globalAlpha = 1.0;
                 }
-            });
+            }
 
             const cannonX = gameCanvas.width / 2;
             const cannonY = gameCanvas.height - 10;
