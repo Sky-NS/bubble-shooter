@@ -165,7 +165,6 @@
             color: white;
             padding: 40px;
         }
-        /* Стили для оверлея Game Over */
         .game-overlay {
             position: absolute;
             top: 0;
@@ -247,7 +246,7 @@
         <div class="loading">Загрузка бесконечного режима...</div>
     </div>
 
-    <!-- Оверлей Game Over (изначально скрыт) -->
+    <!-- Оверлей Game Over -->
     <div id="gameOverlay" class="game-overlay hidden">
         <div class="overlay-score" id="overlayScore">0</div>
         <div id="overlayRecordContainer">
@@ -275,6 +274,7 @@
         const db = firebase.firestore();
 
         let currentUser = null;
+        let currentRecord = 0; // локальный кэш рекорда
 
         // Глобальные переменные игры
         let gameActive = false;
@@ -333,10 +333,10 @@
         const RAINBOW_THRESHOLD = 20;       // радужный шар
         const LIGHTNING_THRESHOLD = 60;      // молния
         const FREEZE_THRESHOLD = 50;         // заморозка
-        const BALL_SPEED = 8;
+        const BALL_SPEED = 10;               // увеличена для более быстрой игры (было 8)
 
-        // Линия поражения (красная черта) – теперь бледная и тонкая, ниже пушки
-        const DEATH_LINE_Y = 470; // координата Y, ниже которой шары считаются проигрышными
+        // Линия поражения
+        const DEATH_LINE_Y = 470;
 
         let grid = [];
         let startOffset = 0;
@@ -353,7 +353,6 @@
 
         let gameScore = 0;
         let gameCombo = 0;
-        let currentRecord = 0;
 
         // Переменные для супершаров
         let bombCharge = 0;
@@ -371,7 +370,7 @@
         let freezeCharge = 0;
         let freezeAvailable = false;
         let freezeActive = false;
-        let freezeTurnsLeft = 0; // сколько выстрелов ещё действует заморозка
+        let freezeTurnsLeft = 0;
 
         // Переменные для анимации пульсации
         let pulsePhase = 0;
@@ -384,6 +383,9 @@
         let rainbowCtx, rainbowCanvas;
         let lightningCtx, lightningCanvas;
         let freezeCtx, freezeCanvas;
+
+        // Переменная для подсветки ряда при прицеливании молнией
+        let highlightRow = -1;
 
         function initPowerupCanvases() {
             bombCanvas = document.getElementById('bombCanvas');
@@ -704,7 +706,7 @@
         // Зарядка заморозки
         function addFreezeCharge(amount) {
             if (freezeAvailable) return;
-            if (freezeTurnsLeft > 0) return; // не копим во время действия
+            if (freezeTurnsLeft > 0) return;
             freezeCharge += amount;
             if (freezeCharge >= FREEZE_THRESHOLD) {
                 freezeCharge = FREEZE_THRESHOLD;
@@ -1147,10 +1149,9 @@
         async function showGameOver() {
             if (gameOverTriggered) return;
             gameOverTriggered = true;
-            gameActive = false; // останавливаем игровой цикл
+            gameActive = false;
             clearInterval(gameInterval);
 
-            // Обновляем рекорд в БД, если нужно
             let newRecord = false;
             if (gameScore > currentRecord) {
                 currentRecord = gameScore;
@@ -1160,7 +1161,6 @@
                 newRecord = true;
             }
 
-            // Обновляем отображение в оверлее
             document.getElementById('overlayScore').innerText = gameScore;
             const recordContainer = document.getElementById('overlayRecordContainer');
             if (newRecord) {
@@ -1169,14 +1169,12 @@
                 recordContainer.innerHTML = `<div class="overlay-record">Рекорд: ${currentRecord}</div>`;
             }
 
-            // Показываем оверлей
             document.getElementById('gameOverlay').classList.remove('hidden');
         }
 
         // Обработчики кнопок оверлея
         document.getElementById('restartBtn').addEventListener('click', () => {
             document.getElementById('gameOverlay').classList.add('hidden');
-            // Перезапуск игры
             initGrid();
             initQueue();
             updateQueueDisplay();
@@ -1192,6 +1190,7 @@
             window.location.href = 'index.html';
         });
 
+        // Исправленная функция processShot
         async function processShot(targetRow, targetCol, ball, hitColor) {
             if (targetRow === null || targetCol === null) return 0;
 
@@ -1201,6 +1200,9 @@
 
             if (ball.isBomb) {
                 destroyedBalls = explodeBomb(targetRow, targetCol);
+                // Добавляем удаление зависших шаров после взрыва
+                const floating = removeFloating();
+                destroyedBalls = destroyedBalls.concat(floating);
                 totalDestroyed = destroyedBalls.length;
                 pointsEarned = totalDestroyed * 10;
                 if (destroyedBalls.length > 0) {
@@ -1290,7 +1292,6 @@
 
             updateScoreDisplay();
 
-            // Проверка поражения по линии смерти
             if (checkDeathLine() && !gameOverTriggered) {
                 await showGameOver();
                 return;
@@ -1322,6 +1323,7 @@
                 lightningActive = false;
                 shooting = true;
                 drawLightningProgress();
+                // При прицеливании молнией подсвечивается ряд – это будет обновляться в drawGame
             } else if (bombActive && bombAvailable) {
                 ball = {
                     x: gameCanvas.width / 2,
@@ -1457,14 +1459,68 @@
         function drawGame() {
             ctx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
 
-            // Рисуем бледную тонкую красную линию смерти без надписи
+            // Рисуем бледную тонкую красную линию смерти
             ctx.beginPath();
             ctx.moveTo(0, DEATH_LINE_Y);
             ctx.lineTo(gameCanvas.width, DEATH_LINE_Y);
-            ctx.strokeStyle = '#ffaaaa'; // бледно-красный
+            ctx.strokeStyle = '#ffaaaa';
             ctx.lineWidth = 1;
             ctx.stroke();
 
+            // Определяем подсвечиваемый ряд при прицеливании молнией
+            if (aiming && !shooting && gameActive && lightningActive && lightningAvailable) {
+                // Вычисляем ряд, в который попадёт курсор, если выстрелить сейчас
+                const startX = gameCanvas.width / 2;
+                const startY = gameCanvas.height - 10;
+                const dx = aimX - startX;
+                const dy = aimY - startY;
+                const len = Math.hypot(dx, dy);
+                if (len > 0.001) {
+                    const vx = (dx / len) * BALL_SPEED;
+                    const vy = (dy / len) * BALL_SPEED;
+                    // Симулируем траекторию до первого столкновения с шаром
+                    let simX = startX, simY = startY;
+                    let simVx = vx, simVy = vy;
+                    let steps = 0;
+                    while (steps < 100) {
+                        simX += simVx;
+                        simY += simVy;
+                        // Проверяем столкновение со стеной
+                        if (simX - BALL_RADIUS < 0) { simVx = Math.abs(simVx); continue; }
+                        if (simX + BALL_RADIUS > gameCanvas.width) { simVx = -Math.abs(simVx); continue; }
+                        if (simY - BALL_RADIUS < 0) break; // потолок
+
+                        // Проверяем столкновение с шаром
+                        for (let r = 0; r < ROWS; r++) {
+                            for (let c = 0; c < COLS; c++) {
+                                if (grid[r][c] !== null) {
+                                    const { x: cx, y: cy } = getBallXY(r, c);
+                                    const dist = Math.hypot(simX - cx, simY - cy);
+                                    if (dist < 2 * BALL_RADIUS) {
+                                        // Нашли ряд
+                                        highlightRow = r;
+                                        steps = 1000; // выход
+                                        break;
+                                    }
+                                }
+                            }
+                            if (highlightRow !== -1) break;
+                        }
+                        steps++;
+                    }
+                }
+            } else {
+                highlightRow = -1;
+            }
+
+            // Рисуем подсветку ряда, если нужно
+            if (highlightRow !== -1) {
+                ctx.fillStyle = 'rgba(255, 140, 0, 0.2)'; // оранжевый полупрозрачный
+                const yStart = highlightRow * CELL_H + BALL_RADIUS + 15 - BALL_RADIUS;
+                ctx.fillRect(0, yStart, gameCanvas.width, CELL_H);
+            }
+
+            // Рисуем шары и прицел (остальная часть без изменений)
             if (aiming && !shooting && gameActive) {
                 const startX = gameCanvas.width / 2;
                 const startY = gameCanvas.height - 10;
@@ -1500,6 +1556,7 @@
                 }
             }
 
+            // Отрисовка шаров (без изменений)
             for (let r = 0; r < ROWS; r++) {
                 for (let c = 0; c < COLS; c++) {
                     if (grid[r][c]) {
